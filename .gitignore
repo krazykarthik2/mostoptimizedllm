@@ -1,0 +1,8 @@
+.hf_cache/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+log.txt
+data/
+test_hf/
+test_hf_jesbu/
