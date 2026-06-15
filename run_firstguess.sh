@@ -11,6 +11,7 @@ mkdir -p viz
 export PYTHONPATH=$PYTHONPATH:$PROJECT_ROOT
 
 echo "=== Capturing Model First Guess from Random Simulation Scene ==="
+echo "Loading VLM and VLA Weights..."
 
 # Suppress warnings
 export TF_CPP_MIN_LOG_LEVEL=3
@@ -21,6 +22,8 @@ python3 src/first_guess.py
 if [ $? -eq 0 ]; then
     echo "=== Success ==="
     echo "Result saved to: viz/first_guess.png"
+    echo "Rotating video saved to: viz/first_guess.mp4"
+    echo "Plot shows predicted (red) vs objects (Cube/Bucket)."
 else
     echo "=== Execution Failed ==="
     exit 1

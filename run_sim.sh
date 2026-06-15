@@ -11,10 +11,10 @@ mkdir -p viz
 # Add project root to PYTHONPATH so 'src' can be imported
 export PYTHONPATH=$PYTHONPATH:$PROJECT_ROOT
 
-echo "=== Starting Randomized Robot Simulation ==="
+echo "=== Starting Randomized Robot Simulation (Floating EEF) ==="
 echo "Output will be saved to: $PROJECT_ROOT/viz/"
-echo "This might take a minute to load models..."
+echo "Loading Models (SmolVLM + VLA)... this may take a moment."
 
 python3 src/sim_viz.py
 
-echo "=== Simulation Finished ==="
+echo "=== Simulation Finished. Check viz/sim_video_*.mp4 ==="

@@ -63,41 +63,41 @@ def generate_visualizations(checkpoint_path, data_dir, output_prefix="viz/random
     state = torch.tensor(np.array(row['current_eef'], dtype=np.float32)).unsqueeze(0).to(device)
     input_ids = torch.tensor(np.array(row['input_ids'], dtype=np.int64)).unsqueeze(0).to(device)
     
+    from src.canonical import denormalize_state, denormalize_action
+    
     # 4. Predict
     with torch.no_grad():
-        # Use predict_action (Euler Solver) instead of forward()
-        pred = model.predict_action(vision, state, input_ids, num_steps=16)
+        pred = model.predict_action(vision, state, input_ids, num_steps=64)
         pred = pred.view(16, 4).cpu().numpy()
-        
-        # Ground truth (ensure 16x4)
         target = np.array(row['future_trajectory']).reshape(16, 4)
 
     # 5. Integrate Deltas for 3D Plotting
-    # Canonical Scaling (1.0 = workspace half-range)
-    SCALES = np.array([0.2, 0.4, 0.25], dtype=np.float32)
-    OFFSET = np.array([0.4, 0.0, 0.25], dtype=np.float32)
+    start_pos_norm = state[0].cpu().numpy()
+    start_pos_phys, _ = denormalize_state(start_pos_norm)
     
-    start_pos_norm = state[0, :3].cpu().numpy()
-    start_pos_phys = (start_pos_norm * SCALES) + OFFSET
+    pred_path = [start_pos_phys]
+    target_path = [start_pos_phys]
     
-    # Action Scaling (Using real movement stats ~3cm range)
-    # Using the same Q01/Q99 as in src/sim_viz.py
-    Q01 = np.array([-0.0290, -0.0449, -0.0303], dtype=np.float32)
-    Q99 = np.array([0.0273, 0.0456, 0.0522], dtype=np.float32)
-    range_act = Q99 - Q01
+    curr_pred = start_pos_phys.copy()
+    curr_target = start_pos_phys.copy()
     
-    pred_pos_phys = (pred[:, :3] + 1.0) / 2.0 * range_act + Q01
-    target_pos_phys = (target[:, :3] + 1.0) / 2.0 * range_act + Q01
-    
-    tx = start_pos_phys[0] + np.cumsum(target_pos_phys[:, 0])
-    ty = start_pos_phys[1] + np.cumsum(target_pos_phys[:, 1])
-    tz = start_pos_phys[2] + np.cumsum(target_pos_phys[:, 2])
-    
-    px = start_pos_phys[0] + np.cumsum(pred_pos_phys[:, 0])
-    py = start_pos_phys[1] + np.cumsum(pred_pos_phys[:, 1])
-    pz = start_pos_phys[2] + np.cumsum(pred_pos_phys[:, 2])
+    for i in range(16):
+        d_pred, _ = denormalize_action(pred[i])
+        d_target, _ = denormalize_action(target[i])
+        
+        curr_pred = curr_pred + d_pred
+        curr_target = curr_target + d_target
+        
+        pred_path.append(curr_pred.copy())
+        target_path.append(curr_target.copy())
 
-    # Figure size 10.24x8 results in 1024x800 pixels (divisible by 16)
+    pred_path = np.stack(pred_path)
+    target_path = np.stack(target_path)
+    
+    px, py, pz = pred_path[:, 0], pred_path[:, 1], pred_path[:, 2]
+    tx, ty, tz = target_path[:, 0], target_path[:, 1], target_path[:, 2]
+
+    # Figure size 10.24x8
     fig = plt.figure(figsize=(10.24, 8), dpi=100)
     ax = fig.add_subplot(111, projection='3d')
     

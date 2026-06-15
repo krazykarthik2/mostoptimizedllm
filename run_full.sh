@@ -9,6 +9,8 @@ PROCESSED_DIR="$PROJECT_ROOT/data/processed"
 
 cd "$PROJECT_ROOT"
 export PYTHONPATH=$PYTHONPATH:$PROJECT_ROOT
+export NCCL_IGNORE_NVML=1
+export NCCL_NVLS_DISABLE=1
 
 echo "=== Starting Full Training Pipeline (No Download) ==="
 

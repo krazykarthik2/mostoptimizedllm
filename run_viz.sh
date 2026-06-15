@@ -12,12 +12,13 @@ mkdir -p viz
 export PYTHONPATH=$PYTHONPATH:$PROJECT_ROOT
 
 CHECKPOINT="robotmodel/models/checkpoints/latest.pt"
-DATA_DIR="data/processed_canonical"
+DATA_DIR="data/processed"
 OUTPUT="viz/random_evaluation"
 
 echo "=== Running 3D Trajectory Visualization (Canonical) ==="
 echo "Checkpoint: $CHECKPOINT"
 echo "Data Dir: $DATA_DIR"
+echo "Loading VLM Backbone and VLA Weights..."
 
 # Suppress warnings
 export TF_CPP_MIN_LOG_LEVEL=3

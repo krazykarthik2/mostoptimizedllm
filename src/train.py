@@ -1,4 +1,10 @@
 import os
+# CRITICAL WORKAROUND: System has NVML driver mismatch which breaks NCCL.
+# We force the GLOO backend which bypasses NVML and handles distributed training over CPU/SHM.
+os.environ['PYTORCH_DISTRIBUTED_BACKEND'] = 'gloo'
+os.environ['ACCELERATE_TORCH_DEVICE'] = 'cuda'
+os.environ['NCCL_IGNORE_NVML'] = '1'
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,292 +16,195 @@ import pandas as pd
 import numpy as np
 import hashlib
 import shutil
-import cv2
-import imageio
-import mujoco
 import glob
 import matplotlib.pyplot as plt
 import json
+from src.canonical import denormalize_state, denormalize_action
 
 def get_architecture_hash(model):
-    """Generates a hash based on the model architecture and hyperparameters."""
-    # If model is compiled, get the original module to ensure hash consistency
-    if hasattr(model, '_orig_mod'):
-        model_str = str(model._orig_mod)
-    else:
-        model_str = str(model)
+    if hasattr(model, '_orig_mod'): model_str = str(model._orig_mod)
+    else: model_str = str(model)
     return hashlib.sha256(model_str.encode()).hexdigest()[:12]
 
 class BridgeEmbeddingDataset(Dataset):
     def __init__(self, data_path):
         if os.path.isdir(data_path):
             files = sorted(glob.glob(os.path.join(data_path, "*.parquet")))
-            print(f"Loading dataset from {len(files)} files in {data_path}")
-            dfs = []
-            for f in files:
-                dfs.append(pd.read_parquet(f))
+            dfs = [pd.read_parquet(f) for f in files]
             self.df = pd.concat(dfs, ignore_index=True)
-        else:
-            self.df = pd.read_parquet(data_path)
-        print(f"Dataset loaded with {len(self.df)} samples.")
+        else: self.df = pd.read_parquet(data_path)
         
-    def __len__(self):
-        return len(self.df)
-        
+    def __len__(self): return len(self.df)
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        try:
-            return {
-                "vision": torch.tensor(np.array(row['vision_embedding'].tolist() if hasattr(row['vision_embedding'], 'tolist') else row['vision_embedding'], dtype=np.float32)),
-                "state": torch.tensor(np.array(row['current_eef'].tolist() if hasattr(row['current_eef'], 'tolist') else row['current_eef'], dtype=np.float32)),
-                "input_ids": torch.tensor(np.array(row['input_ids'].tolist() if hasattr(row['input_ids'], 'tolist') else row['input_ids'], dtype=np.int64)),
-                "target": torch.tensor(np.array(row['future_trajectory'].tolist() if hasattr(row['future_trajectory'], 'tolist') else row['future_trajectory'], dtype=np.float32)).view(-1)
-            }
-        except Exception as e:
-            print(f"Error at index {idx}: {e}")
-            print(f"future_trajectory type: {type(row['future_trajectory'])}")
-            if hasattr(row['future_trajectory'], 'shape'):
-                print(f"future_trajectory shape: {row['future_trajectory'].shape}")
-            raise e
+        return {
+            "vision": torch.tensor(np.array(row['vision_embedding'], dtype=np.float32)),
+            "state": torch.tensor(np.array(row['current_eef'], dtype=np.float32)),
+            "input_ids": torch.tensor(np.array(row['input_ids'], dtype=np.int64)),
+            "target": torch.tensor(np.array(row['future_trajectory'], dtype=np.float32)).view(-1)
+        }
 
 def loss_fn(model, batch, device):
     vision = batch['vision'].to(device)
     state = batch['state'].to(device)
     input_ids = batch['input_ids'].to(device)
-    x1 = batch['target'].to(device) # Target trajectory [B, 64]
-    
+    x1 = batch['target'].to(device)
     batch_size = x1.shape[0]
     
-    # 1. Sample tau ~ Uniform(0, 1)
+    # Standard CFM Loss - Use Huber for stable but precise matching
     tau = torch.rand(batch_size, 1, device=device)
-    
-    # 2. Sample noise x0 ~ N(0, I)
     x0 = torch.randn_like(x1)
-    
-    # 3. Compute noisy action x_tau = tau * x1 + (1 - tau) * x0
     xt = tau * x1 + (1.0 - tau) * x0
-    
-    # 4. Predict velocity field
-    # SmolVLA forward returns velocity when noisy_actions and tau are provided
     pred_v = model(vision, state, input_ids, noisy_actions=xt, tau=tau)
+    cfm_loss = F.huber_loss(pred_v.float(), (x1 - x0).float(), delta=0.5)
     
-    # 5. Target velocity is (x1 - x0)
-    target_v = x1 - x0
+    # Auxiliary "First Guess" Loss: Predict x1 directly from zero noise at t=0
+    # Higher weight (5.0) to force perfect matching on training data.
+    v0 = model(vision, state, input_ids, noisy_actions=torch.zeros_like(x1), tau=torch.zeros_like(tau))
+    aux_loss = F.l1_loss(v0.float(), x1.float())
     
-    # Loss is MSE between predicted and target velocity
-    # Flow matching is typically calculated in FP32
-    loss = F.mse_loss(pred_v.float(), target_v.float())
-    
-    return loss
+    return cfm_loss + 5.0 * aux_loss
 
 def visualize_trajectory(model, batch, device, step, output_dir="viz"):
-    """Generates a visualization plot comparing predicted and target trajectories."""
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Use uncompiled model if available
-    if hasattr(model, '_orig_mod'):
-        eval_model = model._orig_mod
-    else:
-        eval_model = model
-        
+    eval_model = model._orig_mod if hasattr(model, '_orig_mod') else model
     eval_model.eval()
     with torch.no_grad():
-        vision = batch['vision'][0:1].to(device)
-        state = batch['state'][0:1].to(device)
-        input_ids = batch['input_ids'][0:1].to(device)
-        
-        # Use Euler integration for inference
-        pred = eval_model.predict_action(vision, state, input_ids, num_steps=16)
-        pred = pred.view(16, 4).cpu().numpy()
+        vision, state, input_ids = batch['vision'][0:1].to(device), batch['state'][0:1].to(device), batch['input_ids'][0:1].to(device)
+        # Use more integration steps for smoother visualization
+        pred = eval_model.predict_action(vision, state, input_ids, num_steps=64).view(16, 4).cpu().numpy()
         target = batch['target'][0].view(16, 4).cpu().numpy()
-        start_pos = state[0, :3].cpu().numpy()
+        start_pos_norm = state[0].cpu().numpy()
 
-    # De-normalize (Quantile stats)
-    with open("norm_stats.json", "r") as f:
-        stats = json.load(f)
-    Q01 = np.array(stats["q01"], dtype=np.float32)[:3]
-    Q99 = np.array(stats["q99"], dtype=np.float32)[:3]
+    # USE CANONICAL DE-NORMALIZATION
+    start_pos_phys, _ = denormalize_state(start_pos_norm)
     
-    # pred_pos = (pred[:, :3] + 1.0) / 2.0 * (Q99 - Q01) + Q01
-    pred_pos = (pred[:, :3] + 1.0) * (Q99 - Q01) / 2.0 + Q01
-    target_pos = (target[:, :3] + 1.0) * (Q99 - Q01) / 2.0 + Q01
+    def get_path(deltas, start):
+        path = [start]
+        curr = start.copy()
+        for d_norm in deltas:
+            d_phys, _ = denormalize_action(d_norm)
+            curr += d_phys
+            path.append(curr.copy())
+        return np.stack(path)
 
-    # Integrate deltas
-    px = start_pos[0] + np.cumsum(pred_pos[:, 0])
-    py = start_pos[1] + np.cumsum(pred_pos[:, 1])
-    pz = start_pos[2] + np.cumsum(pred_pos[:, 2])
+    p_path = get_path(pred, start_pos_phys)
+    t_path = get_path(target, start_pos_phys)
     
-    tx = start_pos[0] + np.cumsum(target_pos[:, 0])
-    ty = start_pos[1] + np.cumsum(target_pos[:, 1])
-    tz = start_pos[2] + np.cumsum(target_pos[:, 2])
-
-    # Log coordinate difference
-    dist = np.sqrt((px[-1]-tx[-1])**2 + (py[-1]-ty[-1])**2 + (pz[-1]-tz[-1])**2)
-    print(f"Final Step Distance (Predicted vs Target): {dist:.6f} meters")
-    print(f"Target Final Pos: [{tx[-1]:.4f}, {ty[-1]:.4f}, {tz[-1]:.4f}]")
-    print(f"Pred Final Pos: [{px[-1]:.4f}, {py[-1]:.4f}, {pz[-1]:.4f}]")
-
-    fig = plt.figure(figsize=(10, 8))
+    # Extract gripper states (index 3)
+    p_gripper = pred[:, 3]
+    t_gripper = target[:, 3]
+    
+    fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(tx, ty, tz, 'b--x', label='Ground Truth', alpha=0.6)
-    ax.plot(px, py, pz, 'r-o', label='Predicted')
-    ax.scatter(start_pos[0], start_pos[1], start_pos[2], color='green', s=100)
-    ax.set_title(f'Step {step} Trajectory (Flow Matching)')
-    ax.legend()
     
+    # Plot paths with full opacity
+    ax.plot(t_path[:,0], t_path[:,1], t_path[:,2], 'b-', alpha=1.0, linewidth=1, label='GT Path')
+    ax.plot(p_path[:,0], p_path[:,1], p_path[:,2], 'r-', alpha=1.0, linewidth=1, label='Pred Path')
+    
+    # Scatter waypoints with distinct markers for gripper state (alpha=1.0)
+    # Open (> 0): 'o', Closed (<= 0): 'x'
+    for i in range(len(p_gripper)):
+        # GT points
+        m_t = 'o' if t_gripper[i] > 0 else 'x'
+        ax.scatter(t_path[i+1,0], t_path[i+1,1], t_path[i+1,2], color='blue', marker=m_t, s=50, alpha=1.0)
+        
+        # Pred points
+        m_p = 'o' if p_gripper[i] > 0 else 'x'
+        ax.scatter(p_path[i+1,0], p_path[i+1,1], p_path[i+1,2], color='red', marker=m_p, s=50, alpha=1.0)
+    
+    # Custom legend for markers
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='blue', label='GT Path'),
+        Line2D([0], [0], color='red', label='Pred Path'),
+        Line2D([0], [0], marker='o', color='w', label='Open Gripper', markerfacecolor='black', markersize=10),
+        Line2D([0], [0], marker='x', color='w', label='Closed Gripper', markeredgecolor='black', markersize=10)
+    ]
+    
+    ax.set_title(f'Step {step} - 3D Trajectory (o=Open, x=Closed)')
+    ax.legend(handles=legend_elements)
     plt.savefig(f"{output_dir}/step_{step}.png")
     plt.close(fig)
-    print(f"Visualization saved to {output_dir}/step_{step}.png")
     model.train()
 
-import time
-from tqdm import tqdm
-
-# Fix for torch.compile issues in some environments
-if hasattr(torch, "_dynamo"):
-    import torch._dynamo
-    torch._dynamo.config.suppress_errors = True
-
 def train(overfit=False):
-    # Performance Optimization: Enable TensorFloat32 for matmuls on Ampere/Lovelace
     torch.set_float32_matmul_precision('high')
-    
-    # Use BF16 precision for L4 GPUs (Ada Lovelace)
-    accelerator = Accelerator(mixed_precision="bf16") 
-    device = accelerator.device
-    
+    accelerator = Accelerator(mixed_precision="bf16")
     model = SmolVLA()
-    
-    if overfit:
-        print("!!! RUNNING IN OVERFIT MODE (Single Sample) !!!")
-        # Compile is slower for single sample tests, skip it
-    elif hasattr(torch, "compile"):
-        print("Compiling model for maximum throughput...")
+    if not overfit and hasattr(torch, "compile"): 
+        if accelerator.is_main_process:
+            print("!!! MODE: FULL TRAINING ON ENTIRE DATASET !!!")
+            print("Compiling model for maximum throughput (this may take 2-5 minutes)...", flush=True)
         model = torch.compile(model)
     
     arch_version = get_architecture_hash(model)
-    checkpoint_dir = "robotmodel/models/checkpoints"
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    ckpt_dir = "robotmodel/models/checkpoints"
+    os.makedirs(ckpt_dir, exist_ok=True)
+    ckpt_path = os.path.join(ckpt_dir, "latest.pt")
     
-    ckpt_path = os.path.join(checkpoint_dir, "latest.pt")
-    start_step = 0
+    from tqdm import tqdm
+    # Increase adam_lr to 3e-4 to match Muon's speed
+    optimizer = MuonWithAuxAdam(model, lr=1e-3, adam_lr=3e-4)
+    # Add Cosine Annealing Scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer.adam, T_max=20000, eta_min=1e-5)
     
-    # Versioning & Checkpoint Management (Skip for overfit)
-    if not overfit and os.path.exists(ckpt_path):
-        checkpoint = torch.load(ckpt_path, map_location="cpu")
-        if checkpoint.get("arch_version") == arch_version:
-            print(f"Resuming from checkpoint (version {arch_version})")
-            model.load_state_dict(checkpoint["model_state"])
-            start_step = checkpoint["step"]
-        else:
-            print(f"Architecture mismatch (Old: {checkpoint.get('arch_version')}, New: {arch_version}). Deleting old checkpoints.")
-            shutil.rmtree(checkpoint_dir)
-            os.makedirs(checkpoint_dir, exist_ok=True)
-
-    optimizer = MuonWithAuxAdam(model, lr=1e-3, adam_lr=1e-4) # Lower Adam LR for stability
-    
-    # Dataset
-    data_path = "/home/jupyter-238w1a5447/robotmodel/data/processed/train.parquet"
-    if not os.path.exists(data_path):
-        data_path = "/home/jupyter-238w1a5447/robotmodel/data/processed"
-        
+    data_path = "data/processed"
     train_dataset = BridgeEmbeddingDataset(data_path)
     
     if overfit:
-        # Overfit on a single specific sample
-        sample = train_dataset[10]
-        batch = {k: v.unsqueeze(0).to(device) for k, v in sample.items()}
-        print(f"Target values (first 4): {batch['target'][0][:4].tolist()}")
-        
-        # Use plain AdamW for overfit to avoid any Muon instability
-        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0)
-        
-        model.train()
-        model.to(device)
-        # Increase steps for CFM which is slower than regression
-        pbar = tqdm(range(10000), desc="Overfitting")
-        for step in pbar:
-            optimizer.zero_grad()
-            loss = loss_fn(model, batch, device)
+        batch = {k: v.unsqueeze(0).to(accelerator.device) for k, v in train_dataset[10].items()}
+        # Increase capacity and steps for overfitting
+        opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
+        for s in range(10000):
+            opt.zero_grad()
+            loss = loss_fn(model, batch, accelerator.device)
             accelerator.backward(loss)
-            optimizer.step()
-            if step % 500 == 0:
-                pbar.set_postfix({"loss": f"{loss.item():.6f}"})
-        
-        # Save one visualization of the overfit
-        visualize_trajectory(model, batch, device, "overfit")
-        
-        # Save Checkpoint after overfit
-        checkpoint = {
-            "step": 500,
-            "model_state": accelerator.get_state_dict(model),
-            "arch_version": arch_version
-        }
-        torch.save(checkpoint, ckpt_path)
-        print(f"Overfit complete. Result saved to viz/step_overfit.png and {ckpt_path}")
+            opt.step()
+            if s % 1000 == 0 and accelerator.is_main_process:
+                print(f"Overfit Step {s}, Loss: {loss.item():.6f}")
+                visualize_trajectory(model, batch, accelerator.device, f"overfit_{s}")
+        if accelerator.is_main_process:
+            visualize_trajectory(model, batch, accelerator.device, "overfit_final")
+        accelerator.wait_for_everyone()
+        if accelerator.is_main_process:
+            torch.save({"model_state": accelerator.get_state_dict(model), "arch_version": arch_version}, ckpt_path)
         return
 
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)
-
-    print(f"Starting training (Version: {arch_version}) on {device}")
     
-    pbar = tqdm(range(start_step, 20000), desc="Training", disable=not accelerator.is_main_process)
+    if accelerator.is_main_process:
+        print(f"Dataset loaded with {len(train_dataset)} samples.")
+        print(f"Starting training (Version: {arch_version}) on {accelerator.device}")
+        
     train_iter = iter(train_loader)
-    
-    model.train()
+    pbar = tqdm(range(20000), disable=not accelerator.is_main_process, desc="Training", mininterval=1.0)
     for step in pbar:
-        start_time = time.time()
-        
-        try:
-            batch = next(train_iter)
-        except StopIteration:
-            train_iter = iter(train_loader)
-            batch = next(train_iter)
-
-        optimizer.zero_grad()
-        loss = loss_fn(model, batch, device)
+        try: batch = next(train_iter)
+        except: train_iter = iter(train_loader); batch = next(train_iter)
+        optimizer.zero_grad(); loss = loss_fn(model, batch, accelerator.device)
         accelerator.backward(loss)
+        
+        # Gradient clipping for stability with higher learning rates
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        
         optimizer.step()
+        scheduler.step()
         
-        # Real-time updates
         if accelerator.is_main_process:
-            dt = time.time() - start_time
-            samples_per_sec = 128 / dt
-            pbar.set_postfix({
-                "loss": f"{loss.item():.4f}",
-                "speed": f"{samples_per_sec:.1f} spl/s"
-            })
+            pbar.set_postfix({"loss": f"{loss.item():.4f}"})
+            if step % 10 == 0: # Heartbeat every 10 steps
+                 pbar.update(0) 
         
-        # Periodic Tasks
-        if step % 1000 == 0 and step > start_step and accelerator.is_main_process:
-            # Save Checkpoint
-            checkpoint = {
-                "step": step,
-                "model_state": accelerator.get_state_dict(model),
-                "arch_version": arch_version
-            }
-            torch.save(checkpoint, ckpt_path)
-            print(f"\nCheckpoint saved at step {step}")
-            
-            # Visualization
-            try:
-                visualize_trajectory(model, batch, device, step)
-            except Exception as e:
-                print(f"Visualization failed: {e}")
+        if step % 1000 == 0:
+            accelerator.wait_for_everyone()
+            if accelerator.is_main_process:
+                torch.save({"step": step, "model_state": accelerator.get_state_dict(model), "arch_version": arch_version}, ckpt_path)
+                visualize_trajectory(model, batch, accelerator.device, step)
 
 if __name__ == "__main__":
     import argparse
-    import sys
-    print(f"DEBUG: Command line arguments: {sys.argv}")
     parser = argparse.ArgumentParser()
-    # Default is now OVERFIT mode as requested by user
-    parser.add_argument("--full", action="store_true", help="Run full training on entire dataset (instead of default overfit)")
+    parser.add_argument("--full", action="store_true")
     args = parser.parse_args()
-    
-    if args.full:
-        print("!!! MODE: FULL TRAINING ON ENTIRE DATASET !!!")
-    else:
-        print("!!! MODE: OVERFIT ON SINGLE SAMPLE !!!")
-        
     train(overfit=not args.full)

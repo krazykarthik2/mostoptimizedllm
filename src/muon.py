@@ -96,12 +96,13 @@ class MuonWithAuxAdam(optim.Optimizer):
             if not p.requires_grad:
                 continue
             
-            # Transformer backbone weights (2D) use Muon
-            # Embeddings, norms, output heads, custom projectors, and LoRA adapters use AdamW
+            # Transformer backbone weights (2D) and FlowHead weights (2D) use Muon
+            # Embeddings, norms, custom projectors, and LoRA adapters use AdamW
             is_backbone = "layers" in name
-            is_excluded = any(x in name for x in ["embed", "head", "norm", "proj", "lora"])
+            is_head = "flow_head" in name
+            is_excluded = any(x in name for x in ["embed", "norm", "proj", "lora"])
             
-            if p.ndim >= 2 and is_backbone and not is_excluded:
+            if p.ndim >= 2 and (is_backbone or is_head) and not is_excluded:
                 muon_params.append(p)
             else:
                 adam_params.append(p)
