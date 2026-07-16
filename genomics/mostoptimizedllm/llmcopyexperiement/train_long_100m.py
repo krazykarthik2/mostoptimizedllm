@@ -102,27 +102,9 @@ class StreamingMassiveDataset(Dataset):
             if text:
                 all_tokens.extend(tokenizer.encode(text, add_special_tokens=False))
                 
-        # 2. Compile cached Guanaco dialogue
-        print("Packing local OpenAssistant-Guanaco corpus...")
-        raw_guanaco = load_dataset("timdettmers/openassistant-guanaco", split="train")
-        for row in raw_guanaco:
-            text = row["text"]
-            parts = text.split("###")
-            messages = []
-            for part in parts:
-                part = part.strip()
-                if part.startswith("Human:"):
-                    messages.append({"role": "user", "content": part[6:].strip()})
-                elif part.startswith("Assistant:"):
-                    messages.append({"role": "model", "content": part[10:].strip()})
-            if len(messages) > 0:
-                sanitized = sanitize_messages(messages)
-                formatted_text = tokenizer.apply_chat_template(sanitized, tokenize=False)
-                all_tokens.extend(tokenizer.encode(formatted_text, add_special_tokens=False))
-                
-        # 3. Compile massive synthetic reasoning/coding/tools datasets
-        print("Generating and packing 75,000 synthetic logic/code/tool samples...")
-        synthetic_examples = generate_synthetic_data_long(num_samples=25000)
+        # 2. Compile massive synthetic reasoning/coding/tools datasets
+        print("Generating and packing 105,000 synthetic logic/code/tool samples...")
+        synthetic_examples = generate_synthetic_data_long(num_samples=35000)
         for prompt, answer in synthetic_examples:
             messages = [{"role": "user", "content": prompt}, {"role": "model", "content": answer}]
             sanitized = sanitize_messages(messages)
