@@ -1,0 +1,211 @@
+import os
+import sys
+import time
+import torch
+import sympy as sp
+import numpy as np
+
+# Adjust path to import model definitions from the repository
+sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+from model import Gemma3EMLKANGatedMLP
+
+class EMLKANUnifiedCompiler:
+    """
+    Optimal Compiler for EML KAN DAGs.
+    Converts a Gemma-3 EML-KAN MLP layer into a highly optimized, fully vectorized
+    NumPy-executable DAG. Bypasses Python loop overhead completely.
+    """
+    def __init__(self, model_layer, eps=1e-6):
+        self.layer = model_layer
+        self.eps = eps
+        
+        self.hidden_size = model_layer.gate_proj.linear.in_features
+        self.intermediate_size = model_layer.gate_proj.linear.out_features
+        self.num_components = model_layer.gate_proj.eml.num_components
+
+    def compile_layer(self, prune_threshold=1.5e-4):
+        """
+        Compiles the Gemma3EMLKANGatedMLP layer to a highly optimized vectorized NumPy function
+        with threshold-based KAN component pruning.
+        """
+        print(f"Extracting weights and building Sparse Vectorized DAG (threshold: {prune_threshold})...")
+        
+        # Get weight matrices as numpy arrays
+        w_gate_linear = self.layer.gate_proj.linear.weight.detach().float().numpy()  # [intermediate_size, hidden_size]
+        w_up = self.layer.up_proj.weight.detach().float().numpy()                    # [intermediate_size, hidden_size]
+        w_down = self.layer.down_proj.weight.detach().float().numpy()                # [hidden_size, intermediate_size]
+        
+        # EML params
+        eml_a = self.layer.gate_proj.eml.a.detach().float().numpy()                  # [intermediate_size, num_components]
+        eml_b = self.layer.gate_proj.eml.b.detach().float().numpy()                  # [intermediate_size, num_components]
+        eml_c = self.layer.gate_proj.eml.c.detach().float().numpy()                  # [intermediate_size, num_components]
+        eml_d = self.layer.gate_proj.eml.d.detach().float().numpy()                  # [intermediate_size, num_components]
+        eml_w = self.layer.gate_proj.eml.weight_eml.detach().float().numpy()         # [intermediate_size, num_components]
+        
+        # Store arrays in a dictionary to pass to the closure, cast to float32
+        weights_dict = {
+            "w_gate_linear": w_gate_linear.astype(np.float32),
+            "w_up": w_up.astype(np.float32),
+            "w_down": w_down.astype(np.float32),
+            "eml_a": eml_a.astype(np.float32),
+            "eml_b": eml_b.astype(np.float32),
+            "eml_c": eml_c.astype(np.float32),
+            "eml_d": eml_d.astype(np.float32),
+            "eml_w": eml_w.astype(np.float32),
+        }
+        
+        # We generate a fully vectorized NumPy DAG
+        code_lines = [
+            "import numpy as np",
+            "",
+            "def stable_softplus(x):",
+            "    # Match PyTorch's softplus thresholding to prevent overflow and preserve precision",
+            "    return np.where(x > 20.0, x, np.log(1.0 + np.exp(np.clip(x, -50.0, 20.0))))",
+            "",
+            "def eval_eml_kan_mlp_vectorized_dag(X, w):",
+            "    # Input shape: [N, hidden_size]",
+            "    X_f32 = X.astype(np.float32)",
+            "    # 1. Base Linear Projections",
+            "    gate_linear = X_f32 @ w['w_gate_linear'].T",
+            "    up_proj = X_f32 @ w['w_up'].T",
+            "",
+            "    # 2. Sparse Vectorized EML KAN Activation",
+            f"    active_mask = np.abs(w['eml_w']) > {prune_threshold}",
+            "    idx_neurons, idx_components = np.where(active_mask)",
+            "    ",
+            "    # Select only active inputs and parameters",
+            "    x_active = gate_linear[:, idx_neurons]",
+            "    a_active = w['eml_a'][idx_neurons, idx_components]",
+            "    b_active = w['eml_b'][idx_neurons, idx_components]",
+            "    c_active = w['eml_c'][idx_neurons, idx_components]",
+            "    d_active = w['eml_d'][idx_neurons, idx_components]",
+            "    w_active = w['eml_w'][idx_neurons, idx_components]",
+            "    ",
+            "    # Compute active KAN terms",
+            "    arg_x = np.clip(a_active * x_active + b_active, -10.0, 10.0)",
+            "    arg_y = stable_softplus(c_active * x_active + d_active) + " + f"{self.eps}",
+            "    corr_active = w_active * (np.exp(arg_x) - np.log(arg_y))",
+            "    ",
+            "    # Accumulate back into output space",
+            "    eml_corr = np.zeros_like(gate_linear)",
+            "    np.add.at(eml_corr, (slice(None), idx_neurons), corr_active)",
+            "    gate_out = gate_linear + eml_corr",
+            "",
+            "    # 3. GLU fusion with GELU activation",
+            "    gelu_gate = 0.5 * gate_out * (1.0 + np.tanh(0.79788456 * (gate_out + 0.044715 * gate_out**3)))",
+            "    activated = gelu_gate * up_proj",
+            "",
+            "    # 4. Down projection",
+            "    out = activated @ w['w_down'].T",
+            "    return out",
+        ]
+        
+        src_code = "\n".join(code_lines)
+        
+        # Execute generated code to create function in local scope
+        local_scope = {"np": np}
+        exec(src_code, local_scope)
+        eval_fn_raw = local_scope["eval_eml_kan_mlp_vectorized_dag"]
+        
+        # Create a closure wrapper that embeds weights_dict
+        def eval_fn(X):
+            return eval_fn_raw(X, weights_dict)
+            
+        return src_code, eval_fn
+
+
+def main():
+    print("="*80)
+    print("           EML-KAN VECTORIZED DAG OPTIMIZER & COMPILER")
+    print("="*80)
+    
+    # Load PyTorch checkpoint
+    weights_path = "mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement/checkpoints/model_state_regularized.pt"
+    print(f"Loading weights from {weights_path}...")
+    state_dict = torch.load(weights_path, map_location="cpu")
+    
+    # Setup model config
+    class DummyConfig:
+        hidden_size = 1152
+        intermediate_size = 6912
+        
+    config = DummyConfig()
+    
+    print("Instantiating PyTorch Gemma3EMLKANGatedMLP (Layer 0)...")
+    pt_mlp = Gemma3EMLKANGatedMLP(config, num_components=4)
+    
+    # Filter state dict keys for layer 0
+    layer_idx = 0
+    layer_state_dict = {}
+    for k, v in state_dict.items():
+        if f"model.layers.{layer_idx}.mlp." in k:
+            short_k = k.replace(f"model.layers.{layer_idx}.mlp.", "")
+            layer_state_dict[short_k] = v
+            
+    pt_mlp.load_state_dict(layer_state_dict)
+    pt_mlp.eval()
+    
+    # Compile model using our unified vectorized EML-KAN compiler
+    compiler = EMLKANUnifiedCompiler(pt_mlp, eps=1e-6)
+    
+    # Compile with pruning threshold 1.5e-4 to prune inactive learned KAN features
+    src_code, eval_dag = compiler.compile_layer(prune_threshold=1.5e-4)
+    
+    # Verify correctness
+    print("\nVerifying mathematical correctness...")
+    test_input = np.random.randn(5, config.hidden_size).astype(np.float32)
+    
+    # PyTorch output
+    with torch.no_grad():
+        pt_out = pt_mlp(torch.tensor(test_input)).numpy()
+        
+    # Compiled DAG output
+    dag_out = eval_dag(test_input)
+    
+    max_diff = np.max(np.abs(pt_out - dag_out))
+    mean_diff = np.mean(np.abs(pt_out - dag_out))
+    print(f"Max absolute difference: {max_diff:.2e}")
+    print(f"Mean absolute difference: {mean_diff:.2e}")
+    
+    if max_diff < 1e-2:
+        print("SUCCESS: The sparse vectorized DAG is mathematically equivalent within tolerance!")
+    else:
+        print("WARNING: Difference detected!")
+        
+    # Benchmarking
+    print("\nBenchmarking speed performance...")
+    num_runs = 100
+    pt_input = torch.tensor(test_input)
+    
+    # PyTorch CPU Warmup
+    for _ in range(5):
+        _ = pt_mlp(pt_input)
+        
+    t0 = time.time()
+    for _ in range(num_runs):
+        _ = pt_mlp(pt_input)
+    pt_time = (time.time() - t0) / num_runs * 1000.0
+    
+    # Compiled DAG Warmup
+    for _ in range(5):
+        _ = eval_dag(test_input)
+        
+    t0 = time.time()
+    for _ in range(num_runs):
+        _ = eval_dag(test_input)
+    dag_time = (time.time() - t0) / num_runs * 1000.0
+    
+    print(f"Average Execution Latency (Input size: {test_input.shape}):")
+    print(f"  PyTorch CPU (Eager):      {pt_time:.2f} ms")
+    print(f"  Vectorized KAN DAG:       {dag_time:.2f} ms")
+    print(f"  Speedup Factor:           {pt_time / dag_time:.2f}x")
+    print("="*80)
+    
+    # Save the compiled DAG code to a file for review
+    compiled_file = "compiled_eml_kan_dag.py"
+    with open(compiled_file, "w", encoding="utf-8") as f:
+        f.write(src_code)
+    print(f"Saved compiled DAG Python code to {compiled_file}")
+
+if __name__ == "__main__":
+    main()
