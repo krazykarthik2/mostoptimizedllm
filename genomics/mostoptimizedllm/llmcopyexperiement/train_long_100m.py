@@ -162,9 +162,10 @@ def main():
         if "mlp" in name or "norm" in name or "ln_" in name:
             param.requires_grad = True
             
-    # Base learning rate: 1e-5
+    from muon import MuonWithAuxAdam
+    # Base learning rate: 1e-5 (for Muon), adam_lr: 2e-5 (for norms)
     base_lr = 1e-5
-    optimizer = torch.optim.AdamW(model.parameters(), lr=base_lr)
+    optimizer = MuonWithAuxAdam(model, lr=base_lr, adam_lr=2e-5)
     
     model.train()
     step_count = 0
