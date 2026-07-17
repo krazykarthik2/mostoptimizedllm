@@ -28,6 +28,7 @@
 | **Compiled Quantized EML-KAN** | 6.76 t/s | 3.41x | Yes! Fastest eager-comp configuration |
 | **Compiled Quantized EML-KAN + Folded** | 6.02 t/s | 3.04x | Yes! NEW record speed with constant folding |
 | **PyTorch DAG Compiled (Constant Folded)** | **2.74 t/s** | **1.38x** | **Yes! 61.2% speedup over eager FP32 EML-KAN** |
+| **Polynomial-Compiled KAN (Distributive)** | **2.69 t/s** | **1.36x** | **Yes! 58.1% speedup over eager FP32 EML-KAN** |
 
 ---
 
@@ -37,6 +38,7 @@
 3. **Optimized Leaderboard**: This trace fusion successfully bypasses the EML-KAN computation overhead, achieving **6.76 tokens/sec**.
 4. **Constant Folding Speedup**: Adding constant folding and precomputation directly to the graph compilation pipeline boosts EML-KAN generation throughput to **6.02 tokens/sec**.
 5. **PyTorch DAG Compiler Speedup**: Using the native PyTorch KAN DAG compiler (with precomputed constants and index_add_ element routing) runs at **2.74 tokens/sec** in float32, representing a **61.2% speedup** directly over the unoptimized EML-KAN eager model in FP32 (`1.70 t/s`).
+6. **Polynomial-Compiled KAN Speedup**: Replacing the transcendental EML formulas with distributive 3rd-degree polynomials (eliminating exp/log calculations entirely) achieves **2.69 tokens/sec** in float32, representing a **58.1% speedup** directly over eager FP32 EML-KAN baseline.
 
 
 
