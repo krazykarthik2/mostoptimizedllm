@@ -12,6 +12,7 @@
 | **Compiled Quantized EML-KAN + Folded** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
 | **PyTorch DAG Compiled (Constant Folded)** | float32 | 2,006,961,410 | 1913.99 MB | No (same as EML-KAN) |
 | **Taylor & Sharing Compiled (Safe Thresh)** | float32 | 2,006,961,410 | 1913.99 MB | No (same as EML-KAN) |
+| **Quantized Compiled Taylor-Sharing KAN** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
 | **Quantized Compiled Polynomial EML-KAN** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
 
 *Note: In PyTorch, dynamic quantization (`quantize_dynamic`) requires the model to be converted to float32 on CPU first. While the linear layers are quantized to 8-bit integers, the massive embedding layer (which contains over 300 million parameters) remains in float32 (taking 4 bytes per parameter instead of 2 bytes in bfloat16). This upcasting of the embedding layer from 16-bit to 32-bit adds 604 MB of overhead to the saved checkpoint, causing the serialized file size to increase overall. If the embedding layer were kept in 16-bit, the quantized model size would be around **~1.3 GB** (a **32% decrease**).*
@@ -32,7 +33,8 @@
 | **Compiled Quantized EML-KAN + Folded** | 6.02 t/s | 3.04x | Yes! NEW record speed with constant folding |
 | **PyTorch DAG Compiled (Constant Folded)** | **2.74 t/s** | **1.38x** | **Yes! 61.2% speedup over eager FP32 EML-KAN** |
 | **Polynomial-Compiled KAN (Distributive)** | 2.69 t/s | 1.36x | Yes! 58.1% speedup over eager FP32 EML-KAN |
-| **Taylor & Sharing Compiled (Safe Thresh)** | **2.70 t/s** | **1.36x** | **Yes! 58.6% speedup over eager FP32 EML-KAN** |
+| **Taylor & Sharing Compiled (Safe Thresh)** | 2.70 t/s | 1.36x | Yes! 58.8% speedup over eager FP32 EML-KAN |
+| **Quantized Compiled Taylor-Sharing KAN** | **5.25 t/s** | **2.65x** | **Yes! 208.9% speedup over eager FP32 EML-KAN** |
 | **Quantized Compiled Polynomial EML-KAN** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
 
 ---
@@ -44,7 +46,8 @@
 4. **Constant Folding Speedup**: Adding constant folding and precomputation directly to the graph compilation pipeline boosts EML-KAN generation throughput to **6.02 tokens/sec**.
 5. **PyTorch DAG Compiler Speedup**: Using the native PyTorch KAN DAG compiler (with precomputed constants and index_add_ element routing) runs at **2.74 tokens/sec** in float32, representing a **61.2% speedup** directly over the unoptimized EML-KAN eager model in FP32 (`1.70 t/s`).
 6. **Polynomial-Compiled KAN Speedup**: Replacing the transcendental EML formulas with distributive 3rd-degree polynomials (eliminating exp/log calculations entirely) achieves **2.69 tokens/sec** in float32, representing a **58.1% speedup** directly over eager FP32 EML-KAN baseline.
-7. **Taylor & Sharing Compiled Speedup**: Incorporating Taylor Linearization near zero (thresh=0.08) and Shared Scale Fusion (thresh=0.03) runs at **2.70 tokens/sec** in float32, representing a **58.6% speedup** directly over eager FP32 EML-KAN baseline.
+7. **Taylor & Sharing Compiled Speedup**: Incorporating Taylor Linearization near zero (thresh=0.08) and Shared Scale Fusion (thresh=0.03) runs at **2.70 tokens/sec** in float32, representing a **58.8% speedup** directly over eager FP32 EML-KAN baseline.
+8. **Quantized Compiled Taylor-Sharing KAN Speedup**: Running the Taylor Linearization & Shared Scale Fusion graph with INT8 dynamically quantized linear layers yields **5.25 tokens/sec** on the CPU.
 7. **Quantized Compiled Polynomial KAN Speedup**: Combining INT8 dynamic quantization with the pre-summed distributive polynomial activation function and graph compilation yields **7.25 tokens/sec**, setting the absolute CPU generation speed record.
 
 
