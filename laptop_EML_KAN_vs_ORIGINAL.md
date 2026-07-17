@@ -22,6 +22,7 @@
 |---------------------|-------------------------|-----------------------------|----------------------|
 | **Original Gemma-3-1b-it (bfloat16)** | 1.98 t/s | 1.00x (Baseline) | - |
 | **EML-KAN Gemma-3-1b-it (bfloat16)** | 1.41 t/s | 0.71x | No (slower due to extra EML/KAN equations) |
+| **EML-KAN Gemma-3-1b-it (float32)** | 1.70 t/s | 0.86x | Baseline FP32 speed |
 | **Compiled EML-KAN (bfloat16)** | 3.72 t/s | 1.88x | Yes, more than double eager EML-KAN |
 | **Quantized Original (int8 CPU)** | 6.56 t/s | 3.31x | **Yes, increased by 231.3%** |
 | **Quantized EML-KAN (int8 CPU)** | 5.72 t/s | 2.89x | **Yes, but 12.9% slower than Quantized Original** |
