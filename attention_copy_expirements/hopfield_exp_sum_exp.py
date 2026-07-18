@@ -5,7 +5,7 @@ import torch.nn as nn
 import time
 
 # Add the repo's library path to sys.path using directory path traversal
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "genomics", "mostoptimizedllm", "llmcopyexperiement")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mostoptimizedllm", "genomics", "mostoptimizedllm", "llmcopyexperiement")))
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class HopfieldExpSumExpAttention(nn.Module):
@@ -13,12 +13,18 @@ class HopfieldExpSumExpAttention(nn.Module):
     Fused Hopfield Attention using Log-Sum-Exp / Exp-Sum-Exp formulation.
     Bypasses intermediate softmax memory allocations and matches standard Gemma-3 math exactly.
     """
-    def __init__(self, config):
+    def __init__(self, config, layer_idx=0):
         super().__init__()
+        self.config = config
+        self.layer_idx = layer_idx
         self.num_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.head_dim = config.head_dim
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        
+        # Necessary decoder layer attributes
+        self.is_sliding = config.layer_types[layer_idx] == "sliding_attention"
+        self.sliding_window = config.sliding_window if self.is_sliding else None
         
         # Exact Gemma-3 scaling factor
         query_pre_attn_scalar = getattr(config, "query_pre_attn_scalar", self.head_dim)
@@ -110,7 +116,7 @@ def main():
     config = model.config
     
     print("\nInitializing Fused Hopfield Exp-Sum-Exp Attention module...")
-    hopfield_attn = HopfieldExpSumExpAttention(config)
+    hopfield_attn = HopfieldExpSumExpAttention(config, layer_idx=0)
     hopfield_attn.load_weights_from_original(orig_attn)
     hopfield_attn.eval()
     
