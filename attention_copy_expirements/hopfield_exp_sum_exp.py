@@ -56,7 +56,15 @@ class HopfieldExpSumExpAttention(nn.Module):
         if hasattr(orig_attn, "k_norm") and orig_attn.k_norm is not None:
             self.k_norm.weight.data.copy_(orig_attn.k_norm.weight.data)
 
-    def forward(self, hidden_states, position_embeddings=None, attention_mask=None, **kwargs):
+    def forward(
+        self,
+        hidden_states,
+        position_embeddings=None,
+        attention_mask=None,
+        past_key_values=None,
+        cache_position=None,
+        **kwargs
+    ):
         input_shape = hidden_states.shape[:-1]
         batch_size, seq_len = input_shape
         hidden_shape = (*input_shape, -1, self.head_dim)
@@ -72,6 +80,11 @@ class HopfieldExpSumExpAttention(nn.Module):
             cos, sin = position_embeddings
             from transformers.models.gemma3.modeling_gemma3 import apply_rotary_pos_emb
             q, k = apply_rotary_pos_emb(q, k, cos, sin)
+            
+        # Update KV-Cache (updates in-place)
+        if past_key_values is not None:
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position} if position_embeddings is not None else {}
+            k, v = past_key_values.update(k, v, self.layer_idx, cache_kwargs)
             
         if self.num_key_value_groups > 1:
             k = k.repeat_interleave(self.num_key_value_groups, dim=1)
@@ -98,6 +111,7 @@ class HopfieldExpSumExpAttention(nn.Module):
         context_layer = context_layer.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
         output = self.o_proj(context_layer)
         
+        # Return exactly 2 values matching standard Transformers decoder interface
         return output, attn_probs
 
 def main():
@@ -142,34 +156,6 @@ def main():
         print("SUCCESS: Fused Exp-Sum-Exp attention matches standard outputs losslessly!")
     else:
         print("WARNING: Difference detected!")
-        
-    # Benchmarking speed
-    print("\nBenchmarking speed performance...")
-    num_runs = 200
-    
-    # Warmups
-    for _ in range(20):
-        with torch.no_grad():
-            _, _ = orig_attn(test_input, position_embeddings=position_embeddings, attention_mask=attention_mask)
-            _, _ = hopfield_attn(test_input, position_embeddings=position_embeddings, attention_mask=attention_mask)
-            
-    t0 = time.time()
-    for _ in range(num_runs):
-        with torch.no_grad():
-            _, _ = orig_attn(test_input, position_embeddings=position_embeddings, attention_mask=attention_mask)
-    orig_time = (time.time() - t0) / num_runs * 1000.0
-    
-    t0 = time.time()
-    for _ in range(num_runs):
-        with torch.no_grad():
-            _, _ = hopfield_attn(test_input, position_embeddings=position_embeddings, attention_mask=attention_mask)
-    hopfield_time = (time.time() - t0) / num_runs * 1000.0
-    
-    print(f"Average Execution Latency (Input: {test_input.shape}):")
-    print(f"  Standard Attention Layer:       {orig_time:.2f} ms")
-    print(f"  Fused Hopfield Attention:       {hopfield_time:.2f} ms")
-    print(f"  Speedup Factor:                 {orig_time / hopfield_time:.2f}x")
-    print("="*80)
 
 if __name__ == "__main__":
     main()
