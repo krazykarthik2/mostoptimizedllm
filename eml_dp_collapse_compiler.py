@@ -22,7 +22,6 @@ def fit_composite_polynomial(poly_list, domain_bound=3.0, prune_threshold=1.5e-4
     collapsed_p3 = np.zeros(intermediate_size, dtype=np.float32)
     
     for i in range(intermediate_size):
-        # Start with the cheb_nodes inputs
         y = cheb_nodes
         for poly in poly_list:
             p0 = poly["poly_p0"][i]
@@ -31,11 +30,9 @@ def fit_composite_polynomial(poly_list, domain_bound=3.0, prune_threshold=1.5e-4
             p3 = poly["poly_p3"][i]
             y = p0 + p1 * y + p2 * (y**2) + p3 * (y**3)
             
-        # Fit combined target back to 3rd-degree minimax polynomial
         coeffs = np.polyfit(cheb_nodes, y, 3)
         c3, c2, c1, c0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
         
-        # Apply pruning
         if abs(c3) < prune_threshold: c3 = 0.0
         if abs(c2) < prune_threshold: c2 = 0.0
         
@@ -58,11 +55,12 @@ class EMLDPCollapseCompiler:
     while keeping the accumulated approximation drift below a strict threshold.
     Supports 1-layer, 2-layer, and 3-layer merges.
     """
-    def __init__(self, config, state_dict, max_layers=26, error_threshold=1.5e-2):
+    def __init__(self, config, state_dict, max_layers=26, error_threshold=1.5e-2, lambd=1e3):
         self.config = config
         self.state_dict = state_dict
         self.max_layers = max_layers
         self.error_threshold = error_threshold
+        self.lambd = lambd # Trade-off weight between speed and accuracy
         
     def evaluate_merge_error(self, start_idx, end_idx):
         """
@@ -119,28 +117,28 @@ class EMLDPCollapseCompiler:
         L = self.max_layers
         print(f"\nRunning DP Layer Collapse search over {L} layers...")
         
-        # DP state: dp[i] = (min_layers_needed, path_backpointer, accumulated_error)
-        dp = [(999, -1, 0.0)] * (L + 1)
-        dp[0] = (0, -1, 0.0) # Base case
+        # DP state: dp[i] = (min_cost, path_backpointer, accumulated_error)
+        dp = [(999.0, -1, 0.0)] * (L + 1)
+        dp[0] = (0.0, -1, 0.0) # Base case
         
         # Keep track of computed collapses to avoid redundant work
         merge_results = {}
         
         for i in range(1, L + 1):
-            # Search possible incoming step lengths (1, 2, 3 layers)
             for step in [1, 2, 3]:
                 k = i - step
                 if k >= 0:
                     prev_cost, _, prev_err = dp[k]
-                    if prev_cost != 999:
+                    if prev_cost != 999.0:
                         # Evaluate merge error
                         err, collapsed_w = self.evaluate_merge_error(k, i - 1)
                         total_err = prev_err + err
                         
                         # Check if error bounds are satisfied
                         if err <= self.error_threshold:
-                            cost = prev_cost + 1
-                            if cost < dp[i][0] or (cost == dp[i][0] and total_err < dp[i][2]):
+                            # Unified cost function: speedup (1 / step) + trade-off * error
+                            cost = prev_cost + (1.0 / step) + (self.lambd * err)
+                            if cost < dp[i][0]:
                                 dp[i] = (cost, k, total_err)
                                 if collapsed_w is not None:
                                     merge_results[(k, i - 1)] = collapsed_w
