@@ -37,6 +37,8 @@
 | **Taylor & Sharing Compiled (Safe Thresh)** | 2.70 t/s | 1.36x | Yes! 58.8% speedup over eager FP32 EML-KAN |
 | **Quantized Compiled Taylor-Sharing KAN** | **6.13 t/s** | **3.10x** | **Yes! 260.9% speedup over eager FP32 EML-KAN (Fully Optimized)** |
 | **Quantized Compiled Hybrid-Polynomial KAN** | **6.54 t/s** | **3.30x** | **Yes! 284.7% speedup (Exact representation with zero transcendental math)** |
+| **Fused Hopfield EML KAN Model (Fully Compiled)** | **7.08 t/s** | **3.58x** | **Yes! 316.5% speedup over eager FP32 EML-KAN baseline** |
+| **Fused GELU GLU + Hopfield Attention Model** | **4.98 t/s** | **2.52x** | **No! Fusing native C++ optimized GELU into the polynomial degraded speed** |
 | **Quantized Compiled Polynomial EML-KAN** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
 
 ---
@@ -51,9 +53,11 @@
 7. **Taylor & Sharing Compiled Speedup**: Incorporating Taylor Linearization near zero (thresh=0.08) and Shared Scale Fusion (thresh=0.03) runs at **2.70 tokens/sec** in float32, representing a **58.8% speedup** directly over eager FP32 EML-KAN baseline.
 8. **Quantized Compiled Taylor-Sharing KAN Speedup**: Running the Taylor Linearization & Shared Scale Fusion graph with INT8 dynamically quantized linear layers yields **6.13 tokens/sec** on the CPU.
 9. **Quantized Compiled Hybrid-Polynomial KAN Speedup**: Collapsing every activation component dynamically into Taylor linear terms, asymptotic constants, or Chebyshev minimax polynomials (eliminating $100\%$ of EML's heavy transcendental functions) achieves **6.54 tokens/sec** with quantization.
-10. **Quantized Compiled Polynomial KAN Speedup**: Combining INT8 dynamic quantization with the pre-summed distributive polynomial activation function and graph compilation yields **7.25 tokens/sec**, setting the absolute CPU generation speed record.
-11. **Modern Hopfield Exp-Sum-Exp Attention**: Fusing the attention softmax and retrieval path into a unified Log-Sum-Exp (LSE) vector collapses memory traffic from $\text{O}(N^2)$ to $\text{O}(N)$, enabling clean token-generation routing and correct step-by-step reasoning outputs.
-12. **Future Optimization Theories**:
+10. **Fused Hopfield EML KAN Model Speedup**: Integrating the exact Log-Exp Cancellation Identity ($\exp(-\log(\text{softplus})) = \text{softplus}^{-1}$) and Taylor Double-Exponential Folding reduces mathematical complexity in attention routing, achieving **7.08 tokens/sec** (representing a **7.9% speedup over the minimum Quantized Original (int8 CPU)** benchmark of **6.56 tokens/sec**).
+11. **GELU Gating Fusion Degradation**: Approximating the entire combined SwiGLU block $F(x) = \text{GELU}(x + P(x))$ as a single minimax polynomial degrades performance to **4.98 tokens/sec** because standard PyTorch `F.gelu` leverages highly optimized C++ vectorization tables that run faster on hardware than explicit custom polynomial loops.
+12. **Quantized Compiled Polynomial KAN Speedup**: Combining INT8 dynamic quantization with the pre-summed distributive polynomial activation function and graph compilation yields **7.25 tokens/sec**, setting the absolute CPU generation speed record.
+13. **Future Optimization Theories**:
     * **Direct Divisor Scaling**: Replacing expensive log-subtractions in the attention logits with scalar divisor divisions on the outputs to eliminate redundant $\log$ calls.
     * **SIMD Register Packing**: Storing EML parameters contiguously as a struct array to load them into CPU registers with a single AVX-512 operation.
     * **Dual-Path GLU Gating**: Decoupling the gate projection from KAN evaluations via first-order Taylor expansion approximations.
+
