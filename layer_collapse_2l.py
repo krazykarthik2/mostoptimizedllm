@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 # Adjust path to import model definitions
-sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 from eml_hybrid_polynomial_compiler import EMLHybridPolynomialCompiler
 

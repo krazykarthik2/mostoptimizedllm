@@ -13,7 +13,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def main():
     model_id = "google/gemma-3-1b-it"
-    weights_path = "genomics/mostoptimizedllm/llmcopyexperiement/checkpoints/model_state_regularized.pt"
+    weights_path = "genomics/mostoptimizedllm/llmcopyexperiement/gemma3_eml_kan/model_state_regularized.pt"
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
     state_dict = torch.load(weights_path, map_location="cpu")

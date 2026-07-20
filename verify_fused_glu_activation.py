@@ -9,7 +9,7 @@ import numpy as np
 os.environ["HF_HUB_OFFLINE"] = "1"
 
 # Add the repo's library path to sys.path
-sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 
 def gelu_exact(x):

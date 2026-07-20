@@ -6,7 +6,7 @@ import torch.nn as nn
 import time
 
 # Add the repo's library path to sys.path
-sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 from eml_dp_collapse_compiler import EMLDPCollapseCompiler
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -31,7 +31,7 @@ def measure_tps(model, tokenizer, prompt, max_new_tokens=30):
 
 def main():
     model_id = "google/gemma-3-1b-it"
-    weights_path = "mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement/checkpoints/model_state_regularized.pt"
+    weights_path = "genomics/mostoptimizedllm/llmcopyexperiement/gemma3_eml_kan/model_state_regularized.pt"
     prompt = "Write a python function to check if a number is prime."
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)

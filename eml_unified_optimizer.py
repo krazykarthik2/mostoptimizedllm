@@ -6,7 +6,7 @@ import sympy as sp
 import numpy as np
 
 # Adjust path to import model definitions from the repository
-sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 
 class EMLKANUnifiedCompiler:
@@ -180,7 +180,7 @@ def main():
     print("="*80)
     
     # Load PyTorch checkpoint
-    weights_path = "mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement/checkpoints/model_state_regularized.pt"
+    weights_path = "genomics/mostoptimizedllm/llmcopyexperiement/gemma3_eml_kan/model_state_regularized.pt"
     print(f"Loading weights from {weights_path}...")
     state_dict = torch.load(weights_path, map_location="cpu")
     

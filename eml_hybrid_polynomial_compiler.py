@@ -5,7 +5,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 # Adjust path to import model definitions
-sys.path.append(os.path.abspath("mostoptimizedllm/genomics/mostoptimizedllm/llmcopyexperiement"))
+sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 
 def stable_softplus(x):
