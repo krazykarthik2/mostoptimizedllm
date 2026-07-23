@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 from eml_hybrid_polynomial_compiler import EMLHybridPolynomialCompiler
 
-def fit_composite_polynomial(poly_list, domain_bound=3.0, prune_threshold=1.5e-4):
+def fit_composite_polynomial(poly_list, domain_bound=10.0, prune_threshold=1.5e-4):
     """
     Fits a sequence of polynomials (representing consecutive KAN layers) into a single 3rd-degree polynomial.
     """
@@ -91,10 +91,10 @@ class EMLDPCollapseCompiler:
             })
             
         # Fit collapsed composite polynomial
-        collapsed = fit_composite_polynomial(poly_list, domain_bound=3.0, prune_threshold=1.5e-4)
+        collapsed = fit_composite_polynomial(poly_list, domain_bound=10.0, prune_threshold=1.5e-4)
         
         # Calculate approximation drift on Chebyshev nodes
-        cheb_nodes = np.cos((2 * np.arange(1, 15) - 1) * np.pi / 30) * 3.0
+        cheb_nodes = np.cos((2 * np.arange(1, 15) - 1) * np.pi / 30) * 10.0
         intermediate_size = len(poly_list[0]["poly_p0"])
         
         errors = []
