@@ -125,7 +125,7 @@ class EMLDPCollapseCompiler:
         merge_results = {}
         
         for i in range(1, L + 1):
-            for step in [1, 2, 3]:
+            for step in [1, 2, 3, 4, 5, 6]:
                 k = i - step
                 if k >= 0:
                     prev_cost, _, prev_err = dp[k]
