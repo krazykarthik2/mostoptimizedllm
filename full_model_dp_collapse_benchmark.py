@@ -12,6 +12,10 @@ from eml_dp_collapse_compiler import EMLDPCollapseCompiler
 from verify_fused_eml_attention import FusedHopfieldEMLAttention
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+class IdentityMLP(nn.Module):
+    def forward(self, x):
+        return 0.0 * x
+
 class DPMergedGemma3EMLKANMLP(nn.Module):
     def __init__(self, config, start_idx, end_idx, state_dict, collapsed_w):
         super().__init__()

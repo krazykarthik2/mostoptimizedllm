@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
 from model import Gemma3EMLKANGatedMLP
 from eml_dp_collapse_compiler import EMLDPCollapseCompiler
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from full_model_dp_collapse_benchmark import DPMergedGemma3EMLKANMLP
+from full_model_dp_collapse_benchmark import DPMergedGemma3EMLKANMLP, IdentityMLP
 
 def measure_tps(model, tokenizer, prompt, max_new_tokens=30):
     inputs = tokenizer(prompt, return_tensors="pt")
