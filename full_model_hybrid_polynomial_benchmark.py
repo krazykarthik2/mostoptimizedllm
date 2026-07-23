@@ -48,19 +48,17 @@ class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
         self.register_buffer("poly_p3", w_dict["poly_p3"])
         
     def forward(self, x):
+        import torch.nn.functional as F
         # Linears (will be dynamically quantized to INT8 at runtime)
         gate_linear = self.gate_proj(x)
         up_proj = self.up_proj(x)
         
-        # Fused 1D Vectorized Polynomial KAN Activation
-        x_squared = gate_linear * gate_linear
-        x_cubed = x_squared * gate_linear
-        
-        eml_corr = self.poly_p0 + self.poly_p1 * gate_linear + self.poly_p2 * x_squared + self.poly_p3 * x_cubed
+        # Horner's Method: 3 multiplications instead of 5
+        eml_corr = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
         gate_out = gate_linear + eml_corr
         
-        # GLU with GELU activation
-        gelu_gate = 0.5 * gate_out * (1.0 + torch.tanh(0.79788456 * (gate_out + 0.044715 * gate_out**3)))
+        # Native optimized GELU instead of explicit approximation
+        gelu_gate = F.gelu(gate_out)
         activated = gelu_gate * up_proj
         
         out = self.down_proj(activated)
