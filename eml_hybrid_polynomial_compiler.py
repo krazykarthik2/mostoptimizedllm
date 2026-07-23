@@ -40,7 +40,7 @@ class EMLHybridPolynomialCompiler:
         self.intermediate_size = model_layer.gate_proj.linear.out_features
         self.num_components = model_layer.gate_proj.eml.num_components
 
-    def fit_hybrid_polynomials(self, prune_threshold=1.5e-4, taylor_threshold=0.08, domain_bound=10.0):
+    def fit_hybrid_polynomials(self, prune_threshold=1.5e-4, taylor_threshold=0.50, domain_bound=10.0):
         print(f"Compiling layer with Taylor-Polynomial Hybrid Compiler (domain bounds: [-{domain_bound}, {domain_bound}])...")
         
         w_gate_linear = self.layer.gate_proj.linear.weight.detach().float().numpy()

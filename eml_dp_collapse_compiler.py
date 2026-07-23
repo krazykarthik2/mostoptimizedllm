@@ -82,7 +82,7 @@ class EMLDPCollapseCompiler:
             dummy.eval()
             
             compiler = EMLHybridPolynomialCompiler(dummy, eps=1e-6)
-            w_dict = compiler.fit_hybrid_polynomials(prune_threshold=1.5e-4, taylor_threshold=0.08)
+            w_dict = compiler.fit_hybrid_polynomials(prune_threshold=1.5e-4, taylor_threshold=0.50)
             poly_list.append({
                 "poly_p0": w_dict["poly_p0"].numpy(),
                 "poly_p1": w_dict["poly_p1"].numpy(),
