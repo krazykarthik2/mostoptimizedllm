@@ -4,26 +4,22 @@ This report presents the speed and throughput benchmarks comparing the original 
 
 ## 1. Speed / Throughput Comparison
 
-| Model Configuration | CPU Throughput | CPU Speedup (vs. Quantized Original CPU = 22.86 t/s) | GPU Throughput | GPU Speedup (vs. Original BF16 GPU = 30.43 t/s) |
+| Model Configuration | CPU Throughput | CPU Speedup (vs. Quantized Original CPU = 18.57 t/s) | GPU Throughput | GPU Speedup (vs. Original BF16 GPU = 56.84 t/s) |
 |---------------------|----------------|----------------------------------------------------|----------------|-------------------------------------------------|
-| **Original Gemma-3-1b-it (bfloat16)** | 16.81 t/s | 0.74x (-26.5%) | 30.43 t/s | 1.00x (Baseline) |
-| **Quantized Original (int8 CPU)** | 22.86 t/s | 1.00x (Baseline) | - | - |
-| **EML-KAN Gemma-3-1b-it (bfloat16)** | 13.20 t/s | 0.58x (-42.3%) | 40.77 t/s | 1.34x (+34.0%) |
-| **EML-KAN Gemma-3-1b-it (float32)** | 11.87 t/s | 0.52x (-48.1%) | - | - |
-| **Compiled EML-KAN (bfloat16)** | - | - | 39.42 t/s | 1.30x (+29.5%) |
-| **Quantized EML-KAN (int8 CPU)** | 16.61 t/s | 0.73x (-27.3%) | - | - |
-| **Compiled Quantized EML-KAN** | 16.77 t/s | 0.73x (-26.6%) | - | - |
-| **Collapsed 2-Layer KAN + Hopfield Attention withPoly** | 22.02 t/s | 0.96x (-3.7%) | 23.67 t/s | 0.78x (-22.2%) |
-| **DP-Collapsed 3-Layer KAN + Hopfield Attention withPoly** | 21.96 t/s | 0.96x (-3.9%) | 44.96 t/s | 1.48x (+47.8%) |
-| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | 24.28 t/s | 1.06x (+6.2%) | 53.63 t/s | 1.76x (+76.2%) |
-| **Fused Hopfield EML KAN Model withPoly (Fully Compiled)** | 20.18 t/s | 0.88x (-11.7%) | 44.48 t/s | 1.46x (+46.2%) |
-| **Query-Cancelled Hopfield EML KAN Model** | 17.48 t/s | 0.76x (-23.5%) | 49.08 t/s | 1.61x (+61.3%) |
-| **Fused GELU GLU + Hopfield Attention Model withPoly** | 21.89 t/s | 0.96x (-4.2%) | 44.91 t/s | 1.48x (+47.6%) |
+| **Original Gemma-3-1b-it (bfloat16)** | 13.85 t/s | 0.75x (-25.4%) | 56.84 t/s | 1.00x (Baseline) |
+| **Quantized Original (int8 CPU)** | 18.57 t/s | 1.00x (Baseline) | - | - |
+| **EML-KAN Gemma-3-1b-it (bfloat16)** | 11.79 t/s | 0.63x (-36.5%) | 41.94 t/s | 0.74x (-26.2%) |
+| **EML-KAN Gemma-3-1b-it (float32)** | 11.22 t/s | 0.60x (-39.6%) | - | - |
+| **Compiled EML-KAN (bfloat16)** | - | - | 42.21 t/s | 0.74x (-25.7%) |
+| **Quantized EML-KAN (int8 CPU)** | 17.27 t/s | 0.93x (-7.0%) | - | - |
+| **Compiled Quantized EML-KAN** | 17.40 t/s | 0.94x (-6.3%) | - | - |
+| **DP-Collapsed 3-Layer KAN + Hopfield Attention withPoly** | 13.27 t/s | 0.71x (-28.5%) | 45.16 t/s | 0.79x (-20.5%) |
+| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | 12.33 t/s | 0.66x (-33.6%) | 51.17 t/s | 0.90x (-10.0%) |
+| **Fused Hopfield EML KAN Model withPoly (Fully Compiled)** | - | - | 54.24 t/s | 0.95x (-4.6%) |
 
 ## 2. Key Observations & Findings
 
-1. **GPU Baseline Performance**: On the NVIDIA L40S GPU, the native `Original Gemma-3-1b-it (bfloat16)` serves as the fastest original baseline, achieving **30.43 t/s**.
-2. **GPU Performance and KAN Fusions**: The `DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly` configuration reaches **53.63 t/s** on GPU, representing a **1.76x speedup** (+76.2% improvement) over the GPU baseline.
-3. **CPU Baseline Alignment**: On the Intel Xeon Silver 4416+ CPU, the `Quantized Original (int8 CPU)` baseline achieves **22.86 t/s**. The `DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly` model achieves **24.28 t/s** (+6.2% speedup), which surpasses the quantized original baseline on CPU.
-4. **Quantization Comparison**: INT8 quantized execution on GPU is slower than native BF16 due to dynamic casting and scaling overheads during autoregressive sequence generation.
-5. **Chebyshev Polynomial Fitting Domain Bound**: To prevent numerical divergence of KAN correction edges under high-activation bounds (where intermediate values scale to $10.0$ and $-10.0$), the Chebyshev fitting limits were expanded from $[-3.0, 3.0]$ to $[-10.0, 10.0]$. This maintains the measured execution speed while ensuring clean, correct semantic reasoning text generation.
+1. **GPU Baseline Performance**: On the NVIDIA L40S GPU, the native `Original Gemma-3-1b-it (bfloat16)` achieves **56.84 t/s** after clean memory warmup.
+2. **GPU Compilation and Fused KAN**: The `Fused Hopfield EML KAN Model withPoly (Fully Compiled)` configuration reaches **54.24 t/s** on GPU. This is extremely close to the native baseline (**0.95x**), proving that KAN polynomial fusions successfully recover the execution speed of the model.
+3. **CPU Baseline Alignment**: On the Intel Xeon Silver 4416+ CPU, the `Quantized Original (int8 CPU)` baseline achieves **18.57 t/s**. The `Compiled Quantized EML-KAN` model tracks closely at **17.40 t/s** (93.7% of the original quantized baseline).
+4. **Chebyshev Polynomial Fitting Domain Bound**: To prevent numerical divergence of KAN correction edges under high-activation bounds (where intermediate values scale to $10.0$ and $-10.0$), the Chebyshev fitting limits were expanded from $[-3.0, 3.0]$ to $[-10.0, 10.0]$. This maintains the measured execution speed while ensuring clean, correct semantic reasoning text generation.
