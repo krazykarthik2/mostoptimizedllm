@@ -44,7 +44,7 @@
 | **Query-Cancelled Hopfield EML KAN Model** | **5.40 t/s** | **2.73x** | **No! Replacing native attention loop with custom Python classes limits compiler SDPA optimization** |
 | **Fused GELU GLU + Hopfield Attention Model withPoly withPoly** | **4.98 t/s** | **2.52x** | **No! Fusing native C++ optimized GELU into the polynomial degraded speed** |
 | **Quantized Compiled Polynomial EML-KAN withPoly withPoly** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
-| **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA Attention** | **20.48 t/s** | **3.12x** (vs. 6.56 t/s baseline) | **Yes! Fused 3-layer EML-KAN layers using Taylor-1 Jacobian squeeze** |
+| **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA Attention** | **20.48 t/s** | **10.34x** | **Yes! Fused 3-layer EML-KAN layers using Taylor-1 Jacobian squeeze** |
 
 
 ---

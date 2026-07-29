@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+EML_BOUND_PENALTIES = []
+
 class EMLCorrection(nn.Module):
     """
     Additive EML residual path from MHNKAN.
@@ -14,9 +16,9 @@ class EMLCorrection(nn.Module):
         self.eps = eps
         self.num_components = num_components
         self.a = nn.Parameter(torch.randn(channels, num_components) * 0.1)
-        self.b = nn.Parameter(torch.randn(channels, num_components) * 0.1)
+        self.b = nn.Parameter(torch.zeros(channels, num_components))
         self.c = nn.Parameter(torch.randn(channels, num_components) * 0.1)
-        self.d = nn.Parameter(torch.randn(channels, num_components) * 0.1)
+        self.d = nn.Parameter(torch.ones(channels, num_components))
         # EML mixture weights: initialized near-zero so EML path is negligible at start
         self.weight_eml = nn.Parameter(torch.zeros(channels, num_components))
 
@@ -26,7 +28,14 @@ class EMLCorrection(nn.Module):
             arg_x = self.a[..., k] * x + self.b[..., k]
             # Ensure the logarithm argument never drops below e^-10 (~4.54e-5)
             arg_y = F.softplus(self.c[..., k] * x + self.d[..., k]) + 4.54e-5
-            out = out + self.weight_eml[..., k] * (torch.exp(arg_x) - torch.log(arg_y))
+            eml_term = self.weight_eml[..., k] * (torch.exp(arg_x) - torch.log(arg_y))
+            
+            # Penalize output values that stray outside [-10, 10]
+            penalty = torch.mean(torch.clamp(torch.abs(eml_term) - 10.0, min=0.0) ** 2)
+            global EML_BOUND_PENALTIES
+            EML_BOUND_PENALTIES.append(penalty)
+            
+            out = out + eml_term
         return out
 
 

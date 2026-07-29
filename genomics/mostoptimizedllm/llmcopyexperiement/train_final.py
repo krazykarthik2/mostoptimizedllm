@@ -224,11 +224,18 @@ def run_master_training():
             targets = inputs[:, 1:].contiguous()
             inputs = inputs[:, :-1].contiguous()
             
+            import model as eml_model
+            eml_model.EML_BOUND_PENALTIES = []
+            
             outputs = model(inputs)
-            loss = nn.functional.cross_entropy(
+            ce_loss = nn.functional.cross_entropy(
                 outputs.logits.view(-1, outputs.logits.size(-1)).float(),
                 targets.view(-1)
             )
+            
+            # Aggregate boundary constraints
+            bound_loss = sum(eml_model.EML_BOUND_PENALTIES) if eml_model.EML_BOUND_PENALTIES else torch.tensor(0.0, device="cuda:0")
+            loss = ce_loss + 0.1 * bound_loss
             loss.backward()
             
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
