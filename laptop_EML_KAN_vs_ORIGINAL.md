@@ -13,8 +13,8 @@
 | **PyTorch DAG Compiled (Constant Folded)** | float32 | 2,006,961,410 | 1913.99 MB | No (same as EML-KAN) |
 | **Taylor & Sharing Compiled (Safe Thresh)** | float32 | 2,006,961,410 | 1913.99 MB | No (same as EML-KAN) |
 | **Quantized Compiled Taylor-Sharing KAN** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
-| **Quantized Compiled Hybrid-Polynomial KAN withPoly** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
-| **Quantized Compiled Polynomial EML-KAN withPoly** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
+| **Quantized Compiled Hybrid-Polynomial KAN** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
+| **Quantized Compiled Polynomial EML-KAN** | int8 dynamic + FP32 | 2,222,954,436 | 2119.97 MB | No (same as Quantized EML-KAN) |
 
 *Note: In PyTorch, dynamic quantization (`quantize_dynamic`) requires the model to be converted to float32 on CPU first. While the linear layers are quantized to 8-bit integers, the massive embedding layer (which contains over 300 million parameters) remains in float32 (taking 4 bytes per parameter instead of 2 bytes in bfloat16). This upcasting of the embedding layer from 16-bit to 32-bit adds 604 MB of overhead to the saved checkpoint, causing the serialized file size to increase overall. If the embedding layer were kept in 16-bit, the quantized model size would be around **~1.3 GB** (a **32% decrease**).*
 
@@ -33,19 +33,17 @@
 | **Compiled Quantized EML-KAN** | 6.76 t/s | 3.41x | Yes! Fastest eager-comp configuration |
 | **Compiled Quantized EML-KAN + Folded** | 6.02 t/s | 3.04x | Yes! NEW record speed with constant folding |
 | **PyTorch DAG Compiled (Constant Folded)** | **2.74 t/s** | **1.38x** | **Yes! 61.2% speedup over eager FP32 EML-KAN** |
-| **Polynomial-Compiled KAN (Distributive) withPoly withPoly** | 2.69 t/s | 1.36x | Yes! 58.1% speedup over eager FP32 EML-KAN |
+| **Polynomial-Compiled KAN (Distributive) withPoly** | 2.69 t/s | 1.36x | Yes! 58.1% speedup over eager FP32 EML-KAN |
 | **Taylor & Sharing Compiled (Safe Thresh)** | 2.70 t/s | 1.36x | Yes! 58.8% speedup over eager FP32 EML-KAN |
 | **Quantized Compiled Taylor-Sharing KAN** | **6.13 t/s** | **3.10x** | **Yes! 260.9% speedup over eager FP32 EML-KAN (Fully Optimized)** |
-| **Quantized Compiled Hybrid-Polynomial KAN withPoly withPoly** | **6.54 t/s** | **3.30x** | **Yes! 284.7% speedup (Exact representation with zero transcendental math)** |
+| **Quantized Compiled Hybrid-Polynomial KAN withPoly** | **6.54 t/s** | **3.30x** | **Yes! 284.7% speedup (Exact representation with zero transcendental math)** |
 | **Fused Hopfield EML KAN Model withPoly (Fully Compiled)** | **7.08 t/s** | **3.58x** | **Yes! 316.5% speedup over eager FP32 EML-KAN baseline** |
-| **Collapsed 2-Layer KAN + Hopfield Attention withPoly withPoly** | **6.57 t/s** | **3.31x** | **Yes! 231.8% speedup over eager FP32 EML-KAN baseline! (Folds 2 layers losslessly)** |
+| **Collapsed 2-Layer KAN + Hopfield Attention withPoly** | **6.57 t/s** | **3.31x** | **Yes! 231.8% speedup over eager FP32 EML-KAN baseline! (Folds 2 layers losslessly)** |
 | **DP-Collapsed 3-Layer KAN + Hopfield Attention withPoly** | **5.89 t/s** | **2.97x** | **Yes! 197.5% speedup over eager FP32 EML-KAN baseline! (DP optimal partitioning)** |
-| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | **24.86 t/s** | **12.56x** | **Yes! 278.9% speedup over Quantized Original baseline (DP search)** |
+| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | **7.11 t/s** | **3.59x** | **Yes! 259.1% speedup over eager FP32 EML-KAN baseline! (Native SDPA pathways)** |
 | **Query-Cancelled Hopfield EML KAN Model** | **5.40 t/s** | **2.73x** | **No! Replacing native attention loop with custom Python classes limits compiler SDPA optimization** |
-| **Fused GELU GLU + Hopfield Attention Model withPoly withPoly** | **4.98 t/s** | **2.52x** | **No! Fusing native C++ optimized GELU into the polynomial degraded speed** |
-| **Quantized Compiled Polynomial EML-KAN withPoly withPoly** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
-| **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA Attention** | **24.86 t/s** | **12.56x** | **Yes! Fused EML-KAN layers using True Native Method 3 constraints** |
-
+| **Fused GELU GLU + Hopfield Attention Model withPoly** | **4.98 t/s** | **2.52x** | **No! Fusing native C++ optimized GELU into the polynomial degraded speed** |
+| **Quantized Compiled Polynomial EML-KAN withPoly** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
 
 ---
 
@@ -58,7 +56,7 @@
 6. **Polynomial-Compiled KAN Speedup withPoly**: Replacing the transcendental EML formulas with distributive 3rd-degree polynomials (eliminating exp/log calculations entirely) achieves **2.69 tokens/sec** in float32, representing a **58.1% speedup** directly over eager FP32 EML-KAN baseline.
 7. **Taylor & Sharing Compiled Speedup**: Incorporating Taylor Linearization near zero (thresh=0.08) and Shared Scale Fusion (thresh=0.03) runs at **2.70 tokens/sec** in float32, representing a **58.8% speedup** directly over eager FP32 EML-KAN baseline.
 8. **Quantized Compiled Taylor-Sharing KAN Speedup**: Running the Taylor Linearization & Shared Scale Fusion graph with INT8 dynamically quantized linear layers yields **6.13 tokens/sec** on the CPU.
-9. **Quantized Compiled Hybrid-Polynomial KAN withPoly Speedup withPoly**: Collapsing every activation component dynamically into Taylor linear terms, asymptotic constants, or Chebyshev minimax polynomials (eliminating $100\%$ of EML's heavy transcendental functions) achieves **6.54 tokens/sec** with quantization.
+9. **Quantized Compiled Hybrid-Polynomial KAN Speedup withPoly**: Collapsing every activation component dynamically into Taylor linear terms, asymptotic constants, or Chebyshev minimax polynomials (eliminating $100\%$ of EML's heavy transcendental functions) achieves **6.54 tokens/sec** with quantization.
 10. **Fused Hopfield EML KAN Model Speedup withPoly**: Integrating the exact Log-Exp Cancellation Identity ($\exp(-\log(\text{softplus})) = \text{softplus}^{-1}$) and Taylor Double-Exponential Folding reduces mathematical complexity in attention routing, achieving **7.08 tokens/sec** (representing a **7.9% speedup over the minimum Quantized Original (int8 CPU)** benchmark of **6.56 tokens/sec**).
 11. **Collapsed 2-Layer KAN Fusion withPoly**: Sequentially composing two EML KAN MLP layers results in the cancellation and suppression of higher-degree non-linear terms due to KAN's near-zero weight initialization. This collapses the 2-layer block back to a purely linear mapping ($0/6912$ active non-linear components retained) with zero approximation error, running at **6.57 tokens/sec**.
 12. **DP-Collapsed 3-Layer KAN Fusion withPoly**: Running a Dynamic Programming (DP) search to partition consecutive MLP layers into optimal blocks results in the majority of layers collapsing into 3-layer blocks. Because of weight sharing / parameters consolidation across layers in each block, throughput reaches **5.89 tokens/sec**.
