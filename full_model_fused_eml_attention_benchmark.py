@@ -41,7 +41,7 @@ class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
         self.down_proj.weight.data.copy_(w_dict["w_down"])
         
         self.register_buffer("poly_p0", w_dict["poly_p0"])
-        self.register_buffer("poly_p1", w_dict["poly_p1"])
+        self.register_buffer("poly_p1", w_dict["poly_p1"] + 1.0)
         self.register_buffer("poly_p2", w_dict["poly_p2"])
         self.register_buffer("poly_p3", w_dict["poly_p3"])
         
@@ -49,11 +49,8 @@ class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
         gate_linear = self.gate_proj(x)
         up_proj = self.up_proj(x)
         
-        x_squared = gate_linear * gate_linear
-        x_cubed = x_squared * gate_linear
-        
-        eml_corr = self.poly_p0 + self.poly_p1 * gate_linear + self.poly_p2 * x_squared + self.poly_p3 * x_cubed
-        gate_out = gate_linear + eml_corr
+        # Horner's Method with folded linear identity: 3 multiplications and 3 additions total
+        gate_out = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
         
         gelu_gate = 0.5 * gate_out * (1.0 + torch.tanh(0.79788456 * (gate_out + 0.044715 * gate_out**3)))
         activated = gelu_gate * up_proj
