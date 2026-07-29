@@ -14,6 +14,7 @@ This report presents the speed and throughput benchmarks comparing the original 
 | **Quantized EML-KAN (int8 CPU)** | 16.99 t/s | 0.89x (-11.0%) | - | - |
 | **Compiled Quantized EML-KAN** | 17.11 t/s | 0.90x (-10.3%) | - | - |
 | **SDPA Attention + Compiled EML KAN MLP (Fully Compiled)** | - | - | 57.21 t/s | 0.96x (-3.8%) |
+| **SDPA Attention + Padé [1/1] Rational EML KAN MLP (Fully Compiled)** | - | - | 58.74 t/s | 0.99x (-1.2%) |
 
 ## 2. Key Observations & Findings
 
@@ -28,3 +29,5 @@ This report presents the speed and throughput benchmarks comparing the original 
    $$\text{gate\_out} = \text{gate\_linear} + p_0 + p_1 \cdot \text{gate\_linear} + p_2 \cdot \text{gate\_linear}^2 + p_3 \cdot \text{gate\_linear}^3$$
    we algebraically fold the linear identity term $1.0$ directly into the polynomial's linear coefficient ($p'_1 = p_1 + 1.0$) during compilation. This completely eliminates one tensor addition operation (`gate_linear + eml_corr`) in the forward pass of every layer, achieving mathematical lossless compute reduction.
 5. **Multiplicative Cross-Term Decoupling**: By proving that the EML cross-term coefficient $c_{1,1}$ in $c_{1,1} \cdot u \cdot v$ is zero, the compiler decouples the bivariate fitting into independent, parallel 1D additive paths ($P_A(u) + P_B(v)$). This splits the Chebyshev minimax polynomial fit step into parallel univariate processes, ensuring lossless mathematical decoupling of the exponential and logarithmic branches.
+6. **Padé Rational [1/1] Approximants**: By replacing the 3rd-degree Chebyshev polynomials with Padé [1/1] rational approximants ($\frac{p_0 + p_1 x}{1 + |q_1 x|}$), the compiler obtains a highly stable fit over the $[-3.0, 3.0]$ domain with fewer compute operations. This runs at **58.74 t/s** on the L40S GPU, achieving **98.8%** of the original bfloat16 baseline speed while maintaining perfect reasoning correctness.
+
