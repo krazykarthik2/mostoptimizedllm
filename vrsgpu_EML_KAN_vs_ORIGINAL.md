@@ -24,3 +24,7 @@ This report presents the speed and throughput benchmarks comparing the original 
 3. **Tight Domain Compilation**: Under the tanh-bounded design, the Taylor-Polynomial Hybrid Compiler compiles the model with a tight `domain_bound=3.0`.
    - Taylor (linearized) components jump to **8617 parameters** (~71% of EML components) per layer.
    - The compiled model achieves **58.59 t/s** (**97.4%** of native GPU speed) and retains **100% correct, sensible math reasoning, coding, and logical outputs**.
+4. **Lossless EML Grammar Folding**: By exploiting the additive EML grammar:
+   $$\text{gate\_out} = \text{gate\_linear} + p_0 + p_1 \cdot \text{gate\_linear} + p_2 \cdot \text{gate\_linear}^2 + p_3 \cdot \text{gate\_linear}^3$$
+   we algebraically fold the linear identity term $1.0$ directly into the polynomial's linear coefficient ($p'_1 = p_1 + 1.0$) during compilation. This completely eliminates one tensor addition operation (`gate_linear + eml_corr`) in the forward pass of every layer, achieving mathematical lossless compute reduction.
+
