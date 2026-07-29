@@ -22,16 +22,33 @@ def fit_composite_polynomial(poly_list, domain_bound=3.0, prune_threshold=1.5e-4
     collapsed_p3 = np.zeros(intermediate_size, dtype=np.float32)
     
     for i in range(intermediate_size):
-        y = cheb_nodes
-        for poly in poly_list:
-            p0 = poly["poly_p0"][i]
-            p1 = poly["poly_p1"][i]
-            p2 = poly["poly_p2"][i]
-            p3 = poly["poly_p3"][i]
-            y = p0 + p1 * y + p2 * (y**2) + p3 * (y**3)
+        if len(poly_list) == 1:
+            c3 = poly_list[0]["poly_p3"][i]
+            c2 = poly_list[0]["poly_p2"][i]
+            c1 = poly_list[0]["poly_p1"][i]
+            c0 = poly_list[0]["poly_p0"][i]
+        else:
+            # Taylor-1 Squeeze: local linearized composition
+            # y_new = Layer2(x) + grad(Layer2)(x) * (y_old - x)
+            x = cheb_nodes
+            y_old = poly_list[0]["poly_p0"][i] + poly_list[0]["poly_p1"][i] * x + poly_list[0]["poly_p2"][i] * (x**2) + poly_list[0]["poly_p3"][i] * (x**3)
             
-        coeffs = np.polyfit(cheb_nodes, y, 3)
-        c3, c2, c1, c0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
+            for poly in poly_list[1:]:
+                p0 = poly["poly_p0"][i]
+                p1 = poly["poly_p1"][i]
+                p2 = poly["poly_p2"][i]
+                p3 = poly["poly_p3"][i]
+                
+                # Grad of Layer2 at x
+                grad = p1 + 2 * p2 * x + 3 * p3 * (x**2)
+                # Value of Layer2 at x
+                val = p0 + p1 * x + p2 * (x**2) + p3 * (x**3)
+                
+                # Taylor-1 Squeeze composition
+                y_old = val + grad * (y_old - x)
+                
+            coeffs = np.polyfit(cheb_nodes, y_old, 3)
+            c3, c2, c1, c0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
         
         if abs(c3) < prune_threshold: c3 = 0.0
         if abs(c2) < prune_threshold: c2 = 0.0
