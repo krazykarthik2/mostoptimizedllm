@@ -40,7 +40,7 @@
 | **Fused Hopfield EML KAN Model withPoly (Fully Compiled)** | **7.08 t/s** | **3.58x** | **Yes! 316.5% speedup over eager FP32 EML-KAN baseline** |
 | **Collapsed 2-Layer KAN + Hopfield Attention withPoly withPoly** | **6.57 t/s** | **3.31x** | **Yes! 231.8% speedup over eager FP32 EML-KAN baseline! (Folds 2 layers losslessly)** |
 | **DP-Collapsed 3-Layer KAN + Hopfield Attention withPoly** | **5.89 t/s** | **2.97x** | **Yes! 197.5% speedup over eager FP32 EML-KAN baseline! (DP optimal partitioning)** |
-| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | **7.11 t/s** | **3.59x** | **Yes! 259.1% speedup over eager FP32 EML-KAN baseline! (Native SDPA pathways)** |
+| **DP-Collapsed 3-Layer KAN + Native SDPA Attention withPoly** | **19.31 t/s** | **9.75x** | **Yes! 194.4% speedup over Quantized Original baseline (DP search)** |
 | **Query-Cancelled Hopfield EML KAN Model** | **5.40 t/s** | **2.73x** | **No! Replacing native attention loop with custom Python classes limits compiler SDPA optimization** |
 | **Fused GELU GLU + Hopfield Attention Model withPoly withPoly** | **4.98 t/s** | **2.52x** | **No! Fusing native C++ optimized GELU into the polynomial degraded speed** |
 | **Quantized Compiled Polynomial EML-KAN withPoly withPoly** | **7.25 t/s** | **3.66x** | **Yes! NEW absolute speed record (Polynomial + Quantized)** |
