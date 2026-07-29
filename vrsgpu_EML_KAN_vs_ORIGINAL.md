@@ -13,7 +13,7 @@ This report presents the speed and throughput benchmarks comparing the original 
 | **Compiled EML-KAN (bfloat16)** | - | - | 39.80 t/s | 0.67x (-33.1%) |
 | **Quantized EML-KAN (int8 CPU)** | 16.99 t/s | 0.89x (-11.0%) | - | - |
 | **Compiled Quantized EML-KAN** | 17.11 t/s | 0.90x (-10.3%) | - | - |
-| **Fused Hopfield EML KAN Model withPoly (Fully Compiled)** | - | - | 57.21 t/s | 0.96x (-3.8%) |
+| **SDPA Attention + Compiled EML KAN MLP (Fully Compiled)** | - | - | 57.21 t/s | 0.96x (-3.8%) |
 
 ## 2. Key Observations & Findings
 
