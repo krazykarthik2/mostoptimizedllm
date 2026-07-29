@@ -48,7 +48,7 @@ class DPMergedGemma3EMLKANMLP(nn.Module):
         
         # Copy pre-summed collapsed polynomial coefficients
         self.register_buffer("poly_p0", torch.tensor(collapsed_w["poly_p0"]).float())
-        self.register_buffer("poly_p1", torch.tensor(collapsed_w["poly_p1"]).float())
+        self.register_buffer("poly_p1", torch.tensor(collapsed_w["poly_p1"]).float() + 1.0)
         self.register_buffer("poly_p2", torch.tensor(collapsed_w["poly_p2"]).float())
         self.register_buffer("poly_p3", torch.tensor(collapsed_w["poly_p3"]).float())
         
@@ -57,9 +57,8 @@ class DPMergedGemma3EMLKANMLP(nn.Module):
         gate_linear = self.gate_proj(x)
         up_proj = self.up_proj(x)
         
-        # Horner's Method: 3 multiplications instead of 5
-        eml_corr = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
-        gate_out = gate_linear + eml_corr
+        # Horner's Method with folded linear identity: 3 multiplications and 3 additions total
+        gate_out = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
         
         # Native optimized GELU instead of explicit approximation
         gelu_gate = F.gelu(gate_out)

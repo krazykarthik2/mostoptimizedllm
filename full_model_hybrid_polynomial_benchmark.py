@@ -43,7 +43,7 @@ class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
         
         # Register polynomial coefficients as buffers (they don't get quantized)
         self.register_buffer("poly_p0", w_dict["poly_p0"])
-        self.register_buffer("poly_p1", w_dict["poly_p1"])
+        self.register_buffer("poly_p1", w_dict["poly_p1"] + 1.0)
         self.register_buffer("poly_p2", w_dict["poly_p2"])
         self.register_buffer("poly_p3", w_dict["poly_p3"])
         
@@ -53,9 +53,8 @@ class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
         gate_linear = self.gate_proj(x)
         up_proj = self.up_proj(x)
         
-        # Horner's Method: 3 multiplications instead of 5
-        eml_corr = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
-        gate_out = gate_linear + eml_corr
+        # Horner's Method with folded linear identity: 3 multiplications and 3 additions total
+        gate_out = self.poly_p0 + gate_linear * (self.poly_p1 + gate_linear * (self.poly_p2 + gate_linear * self.poly_p3))
         
         # Native optimized GELU instead of explicit approximation
         gelu_gate = F.gelu(gate_out)
