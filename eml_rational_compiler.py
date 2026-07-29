@@ -12,10 +12,10 @@ def stable_softplus(x):
     return np.log(1.0 + np.exp(np.clip(x, -50.0, 20.0)))
 
 def EML_A(x, w_e, a, b):
-    arg_x = 3.0 * np.tanh((a * x + b) / 3.0)
+    arg_x = a * x + b
     return w_e * np.exp(arg_x)
 
-def EML_B(x, w_e, c, d, eps=1e-6):
+def EML_B(x, w_e, c, d, eps=4.54e-5):
     arg_y = c * x + d
     log_softplus = np.where(
         arg_y > 20.0,
@@ -28,7 +28,7 @@ def EML_B(x, w_e, c, d, eps=1e-6):
     )
     return -w_e * log_softplus
 
-def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
+def EML_exact(x, w_e, a, b, c, d, eps=4.54e-5):
     return EML_A(x, w_e, a, b) + EML_B(x, w_e, c, d, eps)
 
 def rational_pade_1_1(x, p0, p1, q1):

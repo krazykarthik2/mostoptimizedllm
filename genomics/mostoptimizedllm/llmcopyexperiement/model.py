@@ -23,8 +23,9 @@ class EMLCorrection(nn.Module):
     def forward(self, x):
         out = x
         for k in range(self.num_components):
-            arg_x = 3.0 * torch.tanh((self.a[..., k] * x + self.b[..., k]) / 3.0)
-            arg_y = F.softplus(self.c[..., k] * x + self.d[..., k]) + self.eps
+            arg_x = self.a[..., k] * x + self.b[..., k]
+            # Ensure the logarithm argument never drops below e^-10 (~4.54e-5)
+            arg_y = F.softplus(self.c[..., k] * x + self.d[..., k]) + 4.54e-5
             out = out + self.weight_eml[..., k] * (torch.exp(arg_x) - torch.log(arg_y))
         return out
 

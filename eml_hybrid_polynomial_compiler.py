@@ -13,10 +13,10 @@ def stable_softplus(x):
 
 def EML_A(x, w_e, a, b):
     # Exp path: 1D univariate function of input (arg_x)
-    arg_x = 3.0 * np.tanh((a * x + b) / 3.0)
+    arg_x = a * x + b
     return w_e * np.exp(arg_x)
 
-def EML_B(x, w_e, c, d, eps=1e-6):
+def EML_B(x, w_e, c, d, eps=4.54e-5):
     # Log path: 1D univariate function of input (arg_y)
     arg_y = c * x + d
     log_softplus = np.where(
@@ -30,7 +30,7 @@ def EML_B(x, w_e, c, d, eps=1e-6):
     )
     return -w_e * log_softplus
 
-def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
+def EML_exact(x, w_e, a, b, c, d, eps=4.54e-5):
     # Lossless decoupled additive composition: EML(x, y) = EML_A(x) + EML_B(y)
     return EML_A(x, w_e, a, b) + EML_B(x, w_e, c, d, eps)
 
