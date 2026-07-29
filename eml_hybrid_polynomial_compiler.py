@@ -12,7 +12,7 @@ def stable_softplus(x):
     return np.log(1.0 + np.exp(np.clip(x, -50.0, 20.0)))
 
 def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
-    arg_x = np.clip(a * x + b, -10.0, 10.0)
+    arg_x = 3.0 * np.tanh((a * x + b) / 3.0)
     arg_y = c * x + d
     
     # Lossless asymptotic log-softplus
@@ -40,7 +40,7 @@ class EMLHybridPolynomialCompiler:
         self.intermediate_size = model_layer.gate_proj.linear.out_features
         self.num_components = model_layer.gate_proj.eml.num_components
 
-    def fit_hybrid_polynomials(self, prune_threshold=1.5e-4, taylor_threshold=0.50, domain_bound=10.0):
+    def fit_hybrid_polynomials(self, prune_threshold=1.5e-4, taylor_threshold=0.50, domain_bound=3.0):
         print(f"Compiling layer with Taylor-Polynomial Hybrid Compiler (domain bounds: [-{domain_bound}, {domain_bound}])...")
         
         w_gate_linear = self.layer.gate_proj.linear.weight.detach().float().numpy()
