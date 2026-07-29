@@ -11,11 +11,14 @@ from model import Gemma3EMLKANGatedMLP
 def stable_softplus(x):
     return np.log(1.0 + np.exp(np.clip(x, -50.0, 20.0)))
 
-def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
+def EML_A(x, w_e, a, b):
+    # Exp path: 1D univariate function of input (arg_x)
     arg_x = 3.0 * np.tanh((a * x + b) / 3.0)
+    return w_e * np.exp(arg_x)
+
+def EML_B(x, w_e, c, d, eps=1e-6):
+    # Log path: 1D univariate function of input (arg_y)
     arg_y = c * x + d
-    
-    # Lossless asymptotic log-softplus
     log_softplus = np.where(
         arg_y > 20.0,
         np.log(arg_y),
@@ -25,7 +28,11 @@ def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
             np.log(stable_softplus(arg_y) + eps)
         )
     )
-    return w_e * (np.exp(arg_x) - log_softplus)
+    return -w_e * log_softplus
+
+def EML_exact(x, w_e, a, b, c, d, eps=1e-6):
+    # Lossless decoupled additive composition: EML(x, y) = EML_A(x) + EML_B(y)
+    return EML_A(x, w_e, a, b) + EML_B(x, w_e, c, d, eps)
 
 class EMLHybridPolynomialCompiler:
     """
@@ -98,16 +105,21 @@ class EMLHybridPolynomialCompiler:
                         p3 = 0.0
                     else:
                         # Exp part remains, fit it with degree 3
-                        ys = w_e * (np.exp(np.clip(a * cheb_nodes + b, -10.0, 10.0)) - (c * cheb_nodes + d))
+                        arg_x = 3.0 * np.tanh((a * cheb_nodes + b) / 3.0)
+                        ys = w_e * (np.exp(arg_x) - (c * cheb_nodes + d))
                         coeffs = np.polyfit(cheb_nodes, ys, 3)
                         p3, p2, p1, p0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
                     regime_counts["Asymptotic"] += 1
                     
-                # Regime C: Medium Non-linear Range (Chebyshev minimax fit)
+                # Regime C: Medium Non-linear Range (Chebyshev minimax fit split into parallel 1D additive paths)
                 else:
-                    ys = EML_exact(cheb_nodes, w_e, a, b, c, d, self.eps)
-                    # Fit 3rd-degree polynomial to Chebyshev nodes
-                    coeffs = np.polyfit(cheb_nodes, ys, 3)
+                    ys_a = EML_A(cheb_nodes, w_e, a, b)
+                    ys_b = EML_B(cheb_nodes, w_e, c, d, self.eps)
+                    
+                    coeffs_a = np.polyfit(cheb_nodes, ys_a, 3)
+                    coeffs_b = np.polyfit(cheb_nodes, ys_b, 3)
+                    
+                    coeffs = coeffs_a + coeffs_b
                     p3, p2, p1, p0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
                     regime_counts["Chebyshev"] += 1
                 

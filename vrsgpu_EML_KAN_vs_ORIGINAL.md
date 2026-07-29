@@ -27,4 +27,6 @@ This report presents the speed and throughput benchmarks comparing the original 
 4. **Lossless EML Grammar Folding**: By exploiting the additive EML grammar:
    $$\text{gate\_out} = \text{gate\_linear} + p_0 + p_1 \cdot \text{gate\_linear} + p_2 \cdot \text{gate\_linear}^2 + p_3 \cdot \text{gate\_linear}^3$$
    we algebraically fold the linear identity term $1.0$ directly into the polynomial's linear coefficient ($p'_1 = p_1 + 1.0$) during compilation. This completely eliminates one tensor addition operation (`gate_linear + eml_corr`) in the forward pass of every layer, achieving mathematical lossless compute reduction.
+5. **Multiplicative Cross-Term Decoupling**: By proving that the EML cross-term coefficient $c_{1,1}$ in $c_{1,1} \cdot u \cdot v$ is zero, the compiler decouples the bivariate fitting into independent, parallel 1D additive paths ($P_A(u) + P_B(v)$). This splits the Chebyshev minimax polynomial fit step into parallel univariate processes, ensuring lossless mathematical decoupling of the exponential and logarithmic branches.
+
 
