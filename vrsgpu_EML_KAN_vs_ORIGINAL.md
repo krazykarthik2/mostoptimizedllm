@@ -18,6 +18,7 @@ This report presents the speed and throughput benchmarks comparing the original 
 | **SDPA Attention + Soft-Gated Compiled EML KAN MLP (Fully Compiled)** | - | - | **56.73 t/s** | **0.95x** (-4.6%) |
 | **SDPA Attention + Single-Spline (k=1) Soft-Gated EML KAN** | - | - | **57.52 t/s** | **0.97x** (-3.3%) |
 | **SDPA Attention + Fused Linear-Folded Soft-Gated EML KAN (k=1)** | - | - | **60.17 t/s** | **1.01x** (+1.2% Speedup!) |
+| **SDPA Attention + Fused GELU-EML-KAN Polynomial (k=1)** | - | - | **60.01 t/s** | **1.01x** (+0.9% Speedup!) |
 | **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA** | - | - | **59.35 t/s** | **0.99x** (-0.2%) |
 
 ## 2. Key Observations & Findings
