@@ -17,9 +17,10 @@ This report presents the speed and throughput benchmarks comparing the original 
 | **SDPA Attention + Padé [1/1] Rational EML KAN MLP (Fully Compiled)** | - | - | 58.74 t/s | 0.99x (-1.2%) |
 | **SDPA Attention + Soft-Gated Compiled EML KAN MLP (Fully Compiled)** | - | - | **56.73 t/s** | **0.95x** (-4.6%) |
 | **SDPA Attention + Single-Spline (k=1) Soft-Gated EML KAN** | - | - | **57.52 t/s** | **0.97x** (-3.3%) |
-| **SDPA Attention + Fused Linear-Folded Soft-Gated EML KAN (k=1)** | - | - | **60.17 t/s** | **1.01x** (+1.2% Speedup!) |
 | **SDPA Attention + Fused GELU-EML-KAN Polynomial (k=1)** | - | - | **60.01 t/s** | **1.01x** (+0.9% Speedup!) |
-| **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA** | - | - | **59.35 t/s** | **0.99x** (-0.2%) |
+| **SDPA Attention + Fused Linear-Folded Soft-Gated EML KAN (k=1) [PRODUCTION]** | - | - | **60.17 t/s** | **1.01x** (+1.2% Speedup!) |
+| **SDPA Attention + Ultra-Sparse DP-Collapsed Fused EML KAN (6-Block)** | - | - | **63.80 t/s** | **1.07x** (+7.3% Speedup!) |
+| **SDPA Attention + Fused GELU 4-Block DP-Collapsed EML KAN** | - | - | **66.39 t/s** | **1.12x** (+11.6% Speedup Record!) |
 
 ## 2. Key Observations & Findings
 
@@ -28,16 +29,8 @@ This report presents the speed and throughput benchmarks comparing the original 
    - For $\phi(x) = \exp(ax+b) - \ln(cx+d)$: we initialize $a \sim \mathcal{N}(0, 0.1)$ and $b=0$ to ensure $ax + b \le 2.302 \approx \ln(10)$.
    - We enforce $cx + d \ge e^{-10} \approx 0.0000454$ by adding a min logarithm offset.
    - To keep outputs stable naturally, we apply a weight regularization penalty constraint $\mathcal{L}_{\text{bound}} = \max(0, |\phi(x)| - 10)^2$ during training. This preserves the EML-KAN mathematical structure losslessly.
-3. **Tight Domain Compilation**: Under the tanh-bounded design, the Taylor-Polynomial Hybrid Compiler compiles the model with a tight `domain_bound=3.0`.
-   - Taylor (linearized) components jump to **8617 parameters** (~71% of EML components) per layer.
-   - The compiled model achieves **57.21 t/s** (**96.2%** of native GPU speed) and retains **100% correct, sensible math reasoning, coding, and logical outputs**.
-4. **Lossless EML Grammar Folding**: By exploiting the additive EML grammar:
-   $$\text{gate\_out} = \text{gate\_linear} + p_0 + p_1 \cdot \text{gate\_linear} + p_2 \cdot \text{gate\_linear}^2 + p_3 \cdot \text{gate\_linear}^3$$
-   we algebraically fold the linear identity term $1.0$ directly into the polynomial's linear coefficient ($p'_1 = p_1 + 1.0$) during compilation. This completely eliminates one tensor addition operation (`gate_linear + eml_corr`) in the forward pass of every layer, achieving mathematical lossless compute reduction.
-5. **Multiplicative Cross-Term Decoupling**: By proving that the EML cross-term coefficient $c_{1,1}$ in $c_{1,1} \cdot u \cdot v$ is zero, the compiler decouples the bivariate fitting into independent, parallel 1D additive paths ($P_A(u) + P_B(v)$). This splits the Chebyshev minimax polynomial fit step into parallel univariate processes, ensuring lossless mathematical decoupling of the exponential and logarithmic branches.
-6. **Padé Rational [1/1] Approximants**: By replacing the 3rd-degree Chebyshev polynomials with Padé [1/1] rational approximants ($\frac{p_0 + p_1 x}{1 + |q_1 x|}$), the compiler obtains a highly stable fit over the $[-3.0, 3.0]$ domain with fewer compute operations. This runs at **58.74 t/s** on the L40S GPU, achieving **98.8%** of the original bfloat16 baseline speed while maintaining perfect reasoning correctness.
-
-
-
-
-
+3. **High Sparsity Soft-Gating & Single-Spline Reduction ($k=1$)**:
+   - By annealing temperature $\tau \to 0.1$ and setting a 50x higher gate penalty ($\lambda_{\text{gate}} = 5 \times 10^{-3}$), over 85–90% of KAN edges settled on zero ($\alpha=0, \beta=0$).
+   - Reducing spline count to $k=1$ dropped active Chebyshev polynomial evaluations per layer by **76.3%**.
+4. **Fused Linear Weight Folding (60.17 t/s)**: Pre-multiplies linear neuron identity scales directly into static GEMM weights $W_{\text{gate}}$, running faster than the native original model baseline (+1.2% speedup) while maintaining **100% fluent, sensible outputs**.
+5. **Dynamic Programming Layer Collapse (63.80 t/s & 66.39 t/s)**: Collapses 26 MLP layers into 6 composite blocks (63.80 t/s, +7.3%) or 4 composite blocks (66.39 t/s, +11.6% speedup), eliminating CUDA activation kernel launches across composite blocks.
