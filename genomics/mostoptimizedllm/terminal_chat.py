@@ -94,20 +94,25 @@ def main():
             print("\n" + RED + DIM + "[SPECIAL TOKENS PIPELINE]:" + RESET)
             print(RED + raw_prompt_text + RESET)
             
-        inputs = tokenizer.apply_chat_template(chat_history, tokenize=True, add_generation_prompt=True, return_tensors="pt").to("cuda")
+        model_inputs = tokenizer.apply_chat_template(chat_history, tokenize=True, add_generation_prompt=True, return_tensors="pt").to("cuda")
         
+        if isinstance(model_inputs, torch.Tensor):
+            input_ids = model_inputs
+        else:
+            input_ids = model_inputs.input_ids
+            
         t0 = time.time()
         with torch.no_grad():
             outputs = model.generate(
-                inputs,
-                max_new_tokens=200,
+                input_ids=input_ids,
+                max_new_tokens=300,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id
             )
             torch.cuda.synchronize()
         dt = time.time() - t0
         
-        gen_ids = outputs[0][inputs.shape[1]:]
+        gen_ids = outputs[0][input_ids.shape[1]:]
         gen_tokens = len(gen_ids)
         tps = gen_tokens / dt if dt > 0 else 0
         
