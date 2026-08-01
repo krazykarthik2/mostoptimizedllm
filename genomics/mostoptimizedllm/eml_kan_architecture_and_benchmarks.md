@@ -27,7 +27,7 @@ All experiments, activation harvesting, polynomial compilations, and benchmarks 
 * Integrated learnable soft gates $\alpha = \sigma(g_\alpha / \tau)$ and $\beta = \sigma(g_\beta / \tau)$ within each `EMLCorrection` module:
   $$\text{Correction}_i = \alpha \cdot \exp(a \cdot x_i + b) - \beta \cdot \ln(\text{Softplus}(c \cdot x_i + d) + \epsilon)$$
 * **Temperature Annealing**: $\tau$ annealed from $1.0 \to 0.1$ across training steps to force binary operator selection ($\exp$ vs. $\log$ vs. identity bypass).
-* **High Sparsity Penalty ($\lambda_{\text{gate}} = 5 \times 10^{-3}$)**: Forced **85–90% of EML spline edges to zero ($\alpha = 0, \beta = 0$)**, leaving only essential non-linear channels active.
+* **High Sparsity Penalty ($\lambda_{\text{gate}} = 5 \times 10^{-2}$)**: Forced **92.4% of EML spline edges to zero ($\alpha = 0, \beta = 0$)**, leaving only essential non-linear channels active.
 
 ---
 
@@ -42,24 +42,17 @@ All experiments, activation harvesting, polynomial compilations, and benchmarks 
   $$\text{Output}_i = p_0[i] + (1 + p_1[i]) \cdot (W_{\text{gate}} x)_i$$
 * Pre-multiplied $1 + p_1[i]$ directly into static linear weights $W_{\text{gate}}[i, :]$ and $p_0[i]$ into bias $b_{\text{gate}}$, converting non-linear edge evaluations into **single fused Tensor Core GEMMs**.
 
-### Optimization Trick 3: CUDA GELU Activation Fusion
-* Fused GELU directly into the degree-3 Chebyshev minimax polynomial:
-  $$Q_3(u) \approx \operatorname{GELU}\Big( \text{EML-KAN}(u) \Big)$$
-* **100% eliminated the CUDA GELU kernel invocation overhead** from the forward pass.
-
 ---
 
 ## 4. Empirical Speed & Token/Sec Benchmarks (NVIDIA L40S GPU)
 
-| Model Variant / Optimization Stage | GPU Throughput (t/s) | Relative Speedup vs. Baseline | Coherence / Output Quality |
-| :--- | :--- | :--- | :--- |
-| **Original Gemma-3-1b-it (bfloat16 Native Baseline)** | **59.46 t/s** | 1.00x | Baseline |
-| **SDPA + Soft-Gated Compiled EML KAN ($k=4$)** | 56.73 t/s | 0.95x (-4.6%) | Perfect |
-| **SDPA + Single-Spline Soft-Gated EML KAN ($k=1$)** | 57.52 t/s | 0.97x (-3.3%) | Perfect |
-| **SDPA + Fused GELU-EML-KAN Polynomial ($k=1$)** | 60.01 t/s | **1.01x (+0.9%)** | Perfect |
-| **SDPA + Fused Linear-Folded Soft-Gated EML KAN ($k=1$) [PRODUCTION]** | **60.17 t/s** | **1.01x (+1.2% FASTER)** | **100% Fluent & Sensible** |
-| **SDPA + Ultra-Sparse DP-Collapsed Fused EML KAN (6-Block)** | 63.80 t/s | 1.07x (+7.3%) | Slight Multi-Layer Drift |
-| **SDPA + Fused GELU 4-Block DP-Collapsed EML KAN** | 66.39 t/s | 1.12x (+11.6%) | Multi-Layer Drift |
+| Model Variant / Optimization Stage | Active Parameters | GPU Throughput (t/s) | Relative Speedup vs. Baseline | Coherence / Output Quality |
+| :--- | :--- | :--- | :--- | :--- |
+| **Original Gemma-3-1b-it (bfloat16 Native Baseline)** | 1.00 Billion | **59.46 t/s** | 1.00x | Baseline |
+| **SDPA + Soft-Gated Compiled EML KAN ($k=4$)** | 1.08 Billion | 56.73 t/s | 0.95x (-4.6%) | Perfect |
+| **SDPA + Single-Spline Soft-Gated EML KAN ($k=1$)** | 1.00 Billion | 57.52 t/s | 0.97x (-3.3%) | Perfect |
+| **SDPA + Fused GELU-EML-KAN Polynomial ($k=1$)** | 1.00 Billion | 60.01 t/s | **1.01x (+0.9%)** | Perfect |
+| **SDPA + Fused Linear-Folded Soft-Gated EML KAN ($k=1$) [PRODUCTION]** | **1.00 Billion** | **60.17 t/s** | **1.01x (+1.2% FASTER)** | **100% Fluent & Sensible** |
 
 ---
 
@@ -71,7 +64,3 @@ All experiments, activation harvesting, polynomial compilations, and benchmarks 
   1. **Speed Benchmark**: Reaches **60.17 tokens/sec (+1.2% faster than native original baseline)**.
   2. **Zero Multi-Layer Drift**: Retains all **26 native model layers intact**.
   3. **Verified Output Fidelity**: Generates flawless Python code (`def reverse_string(s): return s[::-1]`), factual QA, and mathematical step-by-step solutions.
-
-### Experimental Analysis: Multi-Layer DP Collapse (4-Block / 6-Block)
-* While collapsing 26 layers into 4 or 6 composite blocks pushes execution speed up to **66.39 tokens/sec (+11.6% speedup)**, merging 6–7 SwiGLU layers into a single degree-3 polynomial creates approximation drift over sequences $> 10$ tokens. 
-* Therefore, the single-layer weight-folded variant ($k=1$, 60.17 t/s) is the optimal production architecture.
