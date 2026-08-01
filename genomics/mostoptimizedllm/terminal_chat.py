@@ -59,7 +59,9 @@ def main():
         "reason through the problem carefully before providing your final answer. "
         "Keep your tone natural, helpful, and direct, avoiding unnecessary jargon unless explicitly asked."
     )
-    show_raw_tokens = False
+    use_greedy = True
+    temperature = 0.7
+    top_p = 0.9
     
     SYSTEM_MESSAGE = {"role": "system", "content": system_prompt}
     chat_history = [SYSTEM_MESSAGE]
@@ -86,6 +88,23 @@ def main():
             state_str = "ENABLED" if show_raw_tokens else "DISABLED"
             print(CYAN + f"✓ Special token inspection: {BOLD}{state_str}{RESET}\n")
             continue
+        elif user_input.lower() == "/mode":
+            use_greedy = not use_greedy
+            mode_str = "GREEDY DECODING (do_sample=False)" if use_greedy else f"SAMPLING (do_sample=True, temp={temperature})"
+            print(CYAN + f"✓ Decoding mode set to: {BOLD}{mode_str}{RESET}\n")
+            continue
+        elif user_input.lower().startswith("/temp"):
+            parts = user_input.split()
+            if len(parts) > 1:
+                try:
+                    temperature = float(parts[1])
+                    use_greedy = False
+                    print(CYAN + f"✓ Temperature set to {temperature} (Sampling Enabled)\n" + RESET)
+                except ValueError:
+                    print(RED + "Invalid temperature value.\n" + RESET)
+            else:
+                print(CYAN + f"Current Temperature: {temperature}\n" + RESET)
+            continue
             
         chat_history.append({"role": "user", "content": user_input})
         
@@ -101,14 +120,22 @@ def main():
         else:
             input_ids = model_inputs.input_ids
             
+        gen_kwargs = {
+            "input_ids": input_ids,
+            "max_new_tokens": 300,
+            "pad_token_id": tokenizer.eos_token_id
+        }
+        
+        if use_greedy:
+            gen_kwargs["do_sample"] = False
+        else:
+            gen_kwargs["do_sample"] = True
+            gen_kwargs["temperature"] = temperature
+            gen_kwargs["top_p"] = top_p
+            
         t0 = time.time()
         with torch.no_grad():
-            outputs = model.generate(
-                input_ids=input_ids,
-                max_new_tokens=300,
-                do_sample=False,
-                pad_token_id=tokenizer.eos_token_id
-            )
+            outputs = model.generate(**gen_kwargs)
             torch.cuda.synchronize()
         dt = time.time() - t0
         
