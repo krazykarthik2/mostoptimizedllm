@@ -6,8 +6,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+sys.path.append(ROOT_DIR)
 sys.path.append(SCRIPT_DIR)
-sys.path.append(os.path.dirname(SCRIPT_DIR))
 sys.path.append(os.path.join(SCRIPT_DIR, "llmcopyexperiement"))
 
 from model import Gemma3EMLKANGatedMLP
