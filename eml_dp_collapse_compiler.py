@@ -72,16 +72,17 @@ class EMLDPCollapseCompiler:
     while keeping the accumulated approximation drift below a strict threshold.
     Supports 1-layer, 2-layer, and 3-layer merges.
     """
-    def __init__(self, config, state_dict, max_layers=26, error_threshold=1.5e-2, lambd=1e3):
+    def __init__(self, config, state_dict, max_layers=26, error_threshold=1.5e-3, num_components=1):
         self.config = config
         self.state_dict = state_dict
         self.max_layers = max_layers
         self.error_threshold = error_threshold
-        self.lambd = lambd # Trade-off weight between speed and accuracy
+        self.num_components = num_components
+        self.lambd = 1e3 # Trade-off weight between speed and accuracy
         
     def evaluate_merge_error(self, start_idx, end_idx):
         """
-        Evaluates the approximation error of collapsing layers from start_idx to end_idx (inclusive).
+        Calculates the mean absolute approximation error when merging layers [start_idx ... end_idx].
         """
         num_layers_to_merge = end_idx - start_idx + 1
         if num_layers_to_merge == 1:
@@ -90,7 +91,7 @@ class EMLDPCollapseCompiler:
         # Compile each layer to polynomials first
         poly_list = []
         for idx in range(start_idx, end_idx + 1):
-            dummy = Gemma3EMLKANGatedMLP(self.config, num_components=4)
+            dummy = Gemma3EMLKANGatedMLP(self.config, num_components=self.num_components)
             d_state = {}
             for k, v in self.state_dict.items():
                 if f"model.layers.{idx}.mlp." in k:
