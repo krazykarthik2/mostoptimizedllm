@@ -5,7 +5,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-sys.path.append(os.path.abspath("genomics/mostoptimizedllm/llmcopyexperiement"))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(SCRIPT_DIR)
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+sys.path.append(os.path.join(SCRIPT_DIR, "llmcopyexperiement"))
+
 from model import Gemma3EMLKANGatedMLP
 from full_model_hybrid_polynomial_benchmark import QuantizableHybridPolynomialGemma3EMLKANMLP
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -21,7 +25,7 @@ DIM = "\033[2m"
 RESET = "\033[0m"
 
 MODEL_ID = "google/gemma-3-1b-it"
-WEIGHTS_PATH = "genomics/mostoptimizedllm/llmcopyexperiement/gemma3_eml_kan/model_state_high_sparsity.pt"
+WEIGHTS_PATH = os.path.join(SCRIPT_DIR, "llmcopyexperiement", "gemma3_eml_kan", "model_state_high_sparsity.pt")
 
 def print_header():
     print("\n" + CYAN + BOLD + "=" * 75 + RESET)
