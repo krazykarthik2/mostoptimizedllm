@@ -21,7 +21,7 @@ def EML_B(x, w_e, c, d, beta=1.0, eps=4.54e-5):
     arg_y = c * x + d
     log_softplus = np.where(
         arg_y > 20.0,
-        np.log(arg_y),
+        np.log(np.maximum(arg_y, 1e-7)),
         np.where(
             arg_y < -20.0,
             arg_y,
