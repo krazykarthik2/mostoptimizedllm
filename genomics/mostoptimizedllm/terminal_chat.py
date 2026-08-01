@@ -60,7 +60,9 @@ def main():
         "Keep your tone natural, helpful, and direct, avoiding unnecessary jargon unless explicitly asked."
     )
     show_raw_tokens = False
-    history = []
+    
+    SYSTEM_MESSAGE = {"role": "system", "content": system_prompt}
+    chat_history = [SYSTEM_MESSAGE]
     
     while True:
         try:
@@ -76,8 +78,8 @@ def main():
             print(YELLOW + "Exiting Chat Studio. Goodbye!" + RESET)
             break
         elif user_input.lower() == "/clear":
-            history = []
-            print(GREEN + "✓ Conversation history cleared. System prompt active.\n" + RESET)
+            chat_history = [SYSTEM_MESSAGE]
+            print(GREEN + "✓ Conversation history cleared back to SYSTEM_PROMPT.\n" + RESET)
             continue
         elif user_input.lower() == "/tokens":
             show_raw_tokens = not show_raw_tokens
@@ -85,22 +87,19 @@ def main():
             print(CYAN + f"✓ Special token inspection: {BOLD}{state_str}{RESET}\n")
             continue
             
-        # Construct full conversation template with special tokens
-        prompt_text = f"<bos><start_of_turn>system\n{system_prompt}<end_of_turn>\n"
-        for u, m in history:
-            prompt_text += f"<start_of_turn>user\n{u}<end_of_turn>\n<start_of_turn>model\n{m}<end_of_turn>\n"
-        prompt_text += f"<start_of_turn>user\n{user_input}<end_of_turn>\n<start_of_turn>model\n"
+        chat_history.append({"role": "user", "content": user_input})
         
         if show_raw_tokens:
+            raw_prompt_text = tokenizer.apply_chat_template(chat_history, tokenize=False, add_generation_prompt=True)
             print("\n" + RED + DIM + "[SPECIAL TOKENS PIPELINE]:" + RESET)
-            print(RED + prompt_text + RESET)
+            print(RED + raw_prompt_text + RESET)
             
-        inputs = tokenizer(prompt_text, return_tensors="pt").to("cuda")
+        inputs = tokenizer.apply_chat_template(chat_history, tokenize=True, add_generation_prompt=True, return_tensors="pt").to("cuda")
         
         t0 = time.time()
         with torch.no_grad():
             outputs = model.generate(
-                **inputs,
+                inputs,
                 max_new_tokens=200,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id
@@ -108,12 +107,12 @@ def main():
             torch.cuda.synchronize()
         dt = time.time() - t0
         
-        gen_ids = outputs[0][inputs.input_ids.shape[1]:]
+        gen_ids = outputs[0][inputs.shape[1]:]
         gen_tokens = len(gen_ids)
         tps = gen_tokens / dt if dt > 0 else 0
         
         response_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
-        history.append((user_input, response_text))
+        chat_history.append({"role": "model", "content": response_text})
         
         print("\n" + CYAN + BOLD + "EML-KAN Model > " + RESET + response_text)
         print(DIM + GREEN + f"[{gen_tokens} tokens generated in {dt:.2f}s | {tps:.2f} t/s]\n" + RESET)
