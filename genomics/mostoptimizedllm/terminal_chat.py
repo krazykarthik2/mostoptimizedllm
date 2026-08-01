@@ -53,7 +53,12 @@ def main():
     model.eval()
     print(GREEN + BOLD + "✓ Model Ready on NVIDIA L40S GPU!\n" + RESET)
     
-    system_prompt = "You are an expert AI Research Assistant specialized in Deep Learning Architecture, Model Compression, and SciML."
+    system_prompt = (
+        "You are a helpful, precise, and thoughtful AI assistant. "
+        "When presented with logic puzzles, mathematical problems, or step-by-step tasks, "
+        "reason through the problem carefully before providing your final answer. "
+        "Keep your tone natural, helpful, and direct, avoiding unnecessary jargon unless explicitly asked."
+    )
     show_raw_tokens = False
     history = []
     
@@ -72,7 +77,7 @@ def main():
             break
         elif user_input.lower() == "/clear":
             history = []
-            print(GREEN + "✓ Conversation history cleared.\n" + RESET)
+            print(GREEN + "✓ Conversation history cleared. System prompt active.\n" + RESET)
             continue
         elif user_input.lower() == "/tokens":
             show_raw_tokens = not show_raw_tokens
