@@ -59,6 +59,7 @@ def main():
         "reason through the problem carefully before providing your final answer. "
         "Keep your tone natural, helpful, and direct, avoiding unnecessary jargon unless explicitly asked."
     )
+    show_raw_tokens = False
     use_greedy = True
     temperature = 0.7
     top_p = 0.9
