@@ -12,9 +12,9 @@ from eml_hybrid_polynomial_compiler import EMLHybridPolynomialCompiler
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class QuantizableHybridPolynomialGemma3EMLKANMLP(nn.Module):
-    def __init__(self, config, layer_idx, state_dict, prune_threshold=1.5e-4, taylor_threshold=0.08):
+    def __init__(self, config, layer_idx, state_dict, prune_threshold=1.5e-4, taylor_threshold=0.08, num_components=4):
         super().__init__()
-        dummy_layer = Gemma3EMLKANGatedMLP(config, num_components=4)
+        dummy_layer = Gemma3EMLKANGatedMLP(config, num_components=num_components)
         
         layer_state_dict = {}
         for k, v in state_dict.items():

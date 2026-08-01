@@ -15,6 +15,7 @@ This report presents the speed and throughput benchmarks comparing the original 
 | **Compiled Quantized EML-KAN** | 17.11 t/s | 0.90x (-10.3%) | - | - |
 | **SDPA Attention + Compiled EML KAN MLP (Fully Compiled)** | - | - | 57.21 t/s | 0.96x (-3.8%) |
 | **SDPA Attention + Padé [1/1] Rational EML KAN MLP (Fully Compiled)** | - | - | 58.74 t/s | 0.99x (-1.2%) |
+| **SDPA Attention + Soft-Gated Compiled EML KAN MLP (Fully Compiled)** | - | - | **56.73 t/s** | **0.95x** (-4.6%) |
 | **DP-Collapsed 3-Layer KAN + Taylor-1 Squeeze + Native SDPA** | - | - | **59.35 t/s** | **0.99x** (-0.2%) |
 
 ## 2. Key Observations & Findings

@@ -21,14 +21,24 @@ class EMLCorrection(nn.Module):
         self.d = nn.Parameter(torch.ones(channels, num_components))
         # EML mixture weights: initialized near-zero so EML path is negligible at start
         self.weight_eml = nn.Parameter(torch.zeros(channels, num_components))
+        
+        # Learnable soft gates logits
+        self.g_alpha = nn.Parameter(torch.zeros(channels, num_components))
+        self.g_beta = nn.Parameter(torch.zeros(channels, num_components))
+        self.register_buffer("tau", torch.tensor(1.0))
 
     def forward(self, x):
         out = x
+        alpha = torch.sigmoid(self.g_alpha / self.tau)
+        beta = torch.sigmoid(self.g_beta / self.tau)
+        
         for k in range(self.num_components):
             arg_x = self.a[..., k] * x + self.b[..., k]
             # Ensure the logarithm argument never drops below e^-10 (~4.54e-5)
             arg_y = F.softplus(self.c[..., k] * x + self.d[..., k]) + 4.54e-5
-            eml_term = self.weight_eml[..., k] * (torch.exp(arg_x) - torch.log(arg_y))
+            
+            # Apply soft gates to exponential and logarithmic branches
+            eml_term = self.weight_eml[..., k] * (alpha[..., k] * torch.exp(arg_x) - beta[..., k] * torch.log(arg_y))
             
             # Penalize output values that stray outside [-10, 10]
             penalty = torch.mean(torch.clamp(torch.abs(eml_term) - 10.0, min=0.0) ** 2)

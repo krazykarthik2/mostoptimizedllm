@@ -178,7 +178,7 @@ def run_master_training():
         
         # Swap MLP and copy weights 1:1
         orig_mlp = model.model.layers[i].mlp
-        kan_mlp = Gemma3EMLKANGatedMLP(model.config).to(torch.bfloat16).to("cuda:0")
+        kan_mlp = Gemma3EMLKANGatedMLP(model.config, num_components=1).to(torch.bfloat16).to("cuda:0")
         with torch.no_grad():
             kan_mlp.gate_proj.linear.weight.copy_(orig_mlp.gate_proj.weight)
             kan_mlp.up_proj.weight.copy_(orig_mlp.up_proj.weight)
@@ -192,9 +192,22 @@ def run_master_training():
         if "mlp" in name or "norm" in name or "ln_" in name:
             param.requires_grad = True
             
-    # Optimize with AdamW at stable lr = 1e-5
+    # Optimize with AdamW at stable base_lr = 1e-5
     base_lr = 1e-5
-    optimizer = torch.optim.AdamW(model.parameters(), lr=base_lr)
+    
+    # Separate parameter groups: gate logits get 0.1x learning rate (Rule 3)
+    gate_params = []
+    other_params = []
+    for name, param in model.named_parameters():
+        if "g_alpha" in name or "g_beta" in name:
+            gate_params.append(param)
+        else:
+            other_params.append(param)
+            
+    optimizer = torch.optim.AdamW([
+        {'params': other_params, 'lr': base_lr},
+        {'params': gate_params, 'lr': base_lr * 0.1}
+    ])
     
     test_prompts = [
         "Hello! I am John and I have 5 apples. If I give 2 apples to Mary and buy 3 more apples from the store, how many apples do I have now? Explain your reasoning step-by-step.",
@@ -216,8 +229,14 @@ def run_master_training():
                 
             # Cosine learning rate scheduler
             lr = base_lr * 0.5 * (1.0 + math.cos(math.pi * step_count / max_steps))
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
+            optimizer.param_groups[0]['lr'] = lr
+            optimizer.param_groups[1]['lr'] = lr * 0.1 # Rule 3: 0.1x LR
+            
+            # Rule 1: Anneal tau from 1.0 -> 0.1
+            tau_val = max(0.1, 1.0 - 0.9 * (step_count / max_steps))
+            for m in model.modules():
+                if hasattr(m, "tau"):
+                    m.tau.copy_(torch.tensor(tau_val, device=m.tau.device))
                 
             optimizer.zero_grad()
             inputs = batch.to("cuda:0")
@@ -233,9 +252,16 @@ def run_master_training():
                 targets.view(-1)
             )
             
-            # Aggregate boundary constraints
+            # Rule 2: Gate Sparsity Penalty + Boundary Penalty
+            gate_sparsity = 0.0
+            for m in model.modules():
+                if hasattr(m, "g_alpha") and hasattr(m, "g_beta"):
+                    alpha = torch.sigmoid(m.g_alpha / m.tau)
+                    beta = torch.sigmoid(m.g_beta / m.tau)
+                    gate_sparsity = gate_sparsity + torch.mean(torch.abs(alpha) + torch.abs(beta))
+                    
             bound_loss = sum(eml_model.EML_BOUND_PENALTIES) if eml_model.EML_BOUND_PENALTIES else torch.tensor(0.0, device="cuda:0")
-            loss = ce_loss + 0.1 * bound_loss
+            loss = ce_loss + 0.1 * bound_loss + 1e-4 * gate_sparsity
             loss.backward()
             
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

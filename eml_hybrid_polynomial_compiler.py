@@ -11,12 +11,12 @@ from model import Gemma3EMLKANGatedMLP
 def stable_softplus(x):
     return np.log(1.0 + np.exp(np.clip(x, -50.0, 20.0)))
 
-def EML_A(x, w_e, a, b):
+def EML_A(x, w_e, a, b, alpha=1.0):
     # Exp path: 1D univariate function of input (arg_x)
     arg_x = a * x + b
-    return w_e * np.exp(arg_x)
+    return w_e * alpha * np.exp(arg_x)
 
-def EML_B(x, w_e, c, d, eps=4.54e-5):
+def EML_B(x, w_e, c, d, beta=1.0, eps=4.54e-5):
     # Log path: 1D univariate function of input (arg_y)
     arg_y = c * x + d
     log_softplus = np.where(
@@ -28,11 +28,11 @@ def EML_B(x, w_e, c, d, eps=4.54e-5):
             np.log(stable_softplus(arg_y) + eps)
         )
     )
-    return -w_e * log_softplus
+    return -w_e * beta * log_softplus
 
-def EML_exact(x, w_e, a, b, c, d, eps=4.54e-5):
+def EML_exact(x, w_e, a, b, c, d, alpha=1.0, beta=1.0, eps=4.54e-5):
     # Lossless decoupled additive composition: EML(x, y) = EML_A(x) + EML_B(y)
-    return EML_A(x, w_e, a, b) + EML_B(x, w_e, c, d, eps)
+    return EML_A(x, w_e, a, b, alpha) + EML_B(x, w_e, c, d, beta, eps)
 
 class EMLHybridPolynomialCompiler:
     """
@@ -60,6 +60,11 @@ class EMLHybridPolynomialCompiler:
         eml_d = self.layer.gate_proj.eml.d.detach().float().numpy()
         eml_w = self.layer.gate_proj.eml.weight_eml.detach().float().numpy()
         
+        # Soft gates
+        eml_g_alpha = self.layer.gate_proj.eml.g_alpha.detach().float().numpy()
+        eml_g_beta = self.layer.gate_proj.eml.g_beta.detach().float().numpy()
+        tau = self.layer.gate_proj.eml.tau.item()
+        
         # Output coefficients per neuron
         poly_p0 = np.zeros(self.intermediate_size, dtype=np.float32)
         poly_p1 = np.zeros(self.intermediate_size, dtype=np.float32)
@@ -82,14 +87,19 @@ class EMLHybridPolynomialCompiler:
                 c = eml_c[i, k]
                 d = eml_d[i, k]
                 
+                g_alpha_val = eml_g_alpha[i, k]
+                g_beta_val = eml_g_beta[i, k]
+                alpha = 1.0 / (1.0 + np.exp(-g_alpha_val / tau))
+                beta = 1.0 / (1.0 + np.exp(-g_beta_val / tau))
+                
                 # Check maximum bounds over domain
                 max_arg_x = abs(a) * domain_bound + abs(b)
                 max_arg_y = abs(c) * domain_bound + abs(d)
                 
                 # Regime A: Taylor Linearization (exact near zero)
                 if max_arg_x < taylor_threshold and max_arg_y < taylor_threshold:
-                    p0 = w_e * (1.3665 + b - 0.7213 * d)
-                    p1 = w_e * (a - 0.7213 * c)
+                    p0 = w_e * (alpha - 0.272 * beta)
+                    p1 = w_e * (alpha * a - 0.557 * beta * c)
                     p2 = 0.0
                     p3 = 0.0
                     regime_counts["Taylor"] += 1
@@ -99,22 +109,22 @@ class EMLHybridPolynomialCompiler:
                     # softplus(v) \approx e^v, so log(softplus(v)) \approx v
                     # If exp part is also pruned or constant:
                     if (a * domain_bound + b) < -6.0:
-                        p0 = -w_e * d
-                        p1 = -w_e * c
+                        p0 = -w_e * beta * d
+                        p1 = -w_e * beta * c
                         p2 = 0.0
                         p3 = 0.0
                     else:
                         # Exp part remains, fit it with degree 3
-                        arg_x = 3.0 * np.tanh((a * cheb_nodes + b) / 3.0)
-                        ys = w_e * (np.exp(arg_x) - (c * cheb_nodes + d))
+                        arg_x = a * cheb_nodes + b
+                        ys = w_e * (alpha * np.exp(arg_x) - beta * (c * cheb_nodes + d))
                         coeffs = np.polyfit(cheb_nodes, ys, 3)
                         p3, p2, p1, p0 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
                     regime_counts["Asymptotic"] += 1
                     
                 # Regime C: Medium Non-linear Range (Chebyshev minimax fit split into parallel 1D additive paths)
                 else:
-                    ys_a = EML_A(cheb_nodes, w_e, a, b)
-                    ys_b = EML_B(cheb_nodes, w_e, c, d, self.eps)
+                    ys_a = EML_A(cheb_nodes, w_e, a, b, alpha)
+                    ys_b = EML_B(cheb_nodes, w_e, c, d, beta, self.eps)
                     
                     coeffs_a = np.polyfit(cheb_nodes, ys_a, 3)
                     coeffs_b = np.polyfit(cheb_nodes, ys_b, 3)
